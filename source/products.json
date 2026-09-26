@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "issuer": "https://api.doraft.com",
+  "repository": "https://github.com/doraft-labs/doraft-plugins",
+  "products": [
+    {"id": "wiki", "status": "released", "source": "wiki.json"},
+    {"id": "notes", "name": "doraft-notes", "displayName": "Doraft Notes", "status": "planned"}
+  ]
+}

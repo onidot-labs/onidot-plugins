@@ -1,0 +1,19 @@
+{
+  "name": "@doraft/plugins",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "plugins",
+    ".agents",
+    ".claude-plugin",
+    "README.md"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "check": "node scripts/generate.mjs --check",
+    "test": "node --test test/*.test.mjs && node scripts/generate.mjs --check",
+    "verify:codex": "node scripts/verify-codex-oauth.mjs",
+    "package": "node scripts/package.mjs"
+  }
+}

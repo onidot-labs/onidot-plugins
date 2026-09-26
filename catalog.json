@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "issuer": "https://api.doraft.com",
+  "repository": "https://github.com/doraft-labs/doraft-plugins",
+  "products": [
+    {
+      "id": "wiki",
+      "name": "doraft-wiki",
+      "displayName": "Doraft Wiki",
+      "version": "0.8.0",
+      "endpoint": "https://mcp.doraft.com/wiki"
+    }
+  ]
+}
