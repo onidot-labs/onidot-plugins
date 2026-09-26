@@ -1,0 +1,20 @@
+{
+  "name": "doraft",
+  "interface": {
+    "displayName": "Doraft"
+  },
+  "plugins": [
+    {
+      "name": "doraft-wiki",
+      "source": {
+        "source": "local",
+        "path": "./plugins/doraft-wiki"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
