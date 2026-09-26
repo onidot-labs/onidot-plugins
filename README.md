@@ -47,6 +47,7 @@ API 키·클라우드 제공자 인증 등 계정 커넥터를 못 쓰는 Code �
 ## 개발과 릴리스
 
 - source/: 제품 카탈로그와 공통 스킬 원본
+- .github/workflows/: PR과 main에서 회귀 테스트·생성물·패키지 자동 검사
 - scripts/ 및 test/: 생성·패키징·설치 진단과 계약 테스트
 - plugins/: 동일 제품의 Codex·Claude manifest와 스킬
 - .agents/plugins/ 및 .claude-plugin/: 클라이언트별 카탈로그
