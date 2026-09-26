@@ -17,12 +17,16 @@ Wiki 앱의 연결만 다룬다. 별도 Platform 플러그인은 필요하지 �
 
 ## Codex
 
-1. 이 플러그인에 포함된 `doraft-wiki` 원격 MCP의 인증 상태를 확인한다. 플러그인 설치 사실만으로 인증 성공을 주장하지 않는다.
-2. 클라이언트가 제공하는 연결/인증 UI에서 브라우저 OAuth를 시작한다. 주소는 `https://mcp.doraft.com/wiki`다(인가 서버는 그대로 `https://api.doraft.com`). 사용자는 Doraft 로그인 후 Workspace와 읽기·쓰기 권한을 승인한다. 현재 클라이언트의 OAuth 토큰을 다른 클라이언트에 복사하지 않는다.
-3. `list_workspaces`를 호출해 실제 접근을 확인한다. 목록이 비어 있으면 승인 Workspace와 현재 멤버십을 확인한다. Wiki 페이지 조회가 성공하기 전에는 문서 접근이 검증되었다고 하지 않는다.
-4. 실패하면 Platform 연결 관리 `https://console.doraft.com/settings/connections`에서 해당 연결의 범위·만료·철회 여부를 확인한다. 범위 편집이 제공되면 새 Workspace를 기존 연결에 추가하고 저장한 뒤 실제 조회를 확인한다. ALL은 이후 참여 Workspace도 포함하고 SELECTED는 직접 추가한다. 권한 확대는 사용자 요청 없이 수행하지 않는다. 연결이 만료·철회됐거나 앱 요청 권한이 달라진 경우 클라이언트에서 재인증한다. 인증값을 채팅, 명령 인자, URL, 설정 파일에 복사하도록 요청하지 않는다.
+0.9.0부터 로컬 macOS/Linux Codex는 공유 OAuth helper로 갱신을 한 번만 수행한다. Node.js 24 이상과 `http_headers_helper`를 지원하는 Codex가 필요하다. 원격 실행 및 Windows에서는 이 helper 경로를 검증하지 않았다. 지원되지 않는 환경에서 설치·연결 성공을 주장하지 않는다. Claude와 GPT 웹의 계정 OAuth는 별개다.
 
-Codex를 사용하는 클라이언트에는 같은 Wiki MCP를 `doraft setup`으로 중복 등록하지 않는다.
+1. `codex plugin add doraft-wiki@doraft`로 설치하고 출력의 installedPath를 확인한다. 아래 경로는 기본 Codex 캐시 기준이다. CODEX_HOME을 바꾸면 같은 위치를 사용한다.
+2. `node "${CODEX_HOME:-$HOME/.codex}/plugins/cache/doraft/doraft-wiki/0.9.0/scripts/oauth-helper.mjs" login`으로 브라우저 OAuth를 시작한다. 인가 서버는 `https://api.doraft.com`, 토큰 대상은 `https://mcp.doraft.com/wiki`다. 사용자에게 승인받은 Workspace 범위만 선택한다.
+3. 같은 명령의 `login`을 `status`로 바꾸어 저장 상태를 확인한다. `headers`는 비밀 헤더를 출력하므로 진단용으로 실행하거나 출력 내용을 공유하지 않는다. 토큰은 private 런타임 파일에 저장되며 다른 클라이언트의 토큰을 복사하지 않는다.
+4. 이전 0.8.0 네이티브 OAuth가 있으면 새 helper 로그인 성공 후 `codex mcp logout doraft-wiki`로 기존 로컬 인증만 제거한다. 네이티브 인증이 남으면 helper보다 우선하여 갱신 경쟁이 계속될 수 있다. 서버의 다른 grant를 철회하지 않는다. 이후 새 작업에서 실제 `list_workspaces`와 페이지 조회를 확인한다.
+5. `OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED`는 갱신 응답 유실로 재사용을 막은 상태다. `login`을 다시 실행한다. 프로세스가 종료되면 SQLite 운영체제 잠금이 자동 해제된다. `OAUTH_REFRESH_LOCKED`는 다른 프로세스가 실행 중일 수 있으므로 잠금 파일을 삭제하지 않는다.
+6. 사용자가 서버 연결을 철회했거나 권한을 변경한 경우 자동 복구를 보장하지 않는다. Platform 연결 관리 `https://console.doraft.com/settings/connections`에서 확인하고 필요하면 동일한 helper `login`으로 재인증한다. ALL은 이후 참여 Workspace도 포함한다. 권한 확대는 사용자 요청 없이 수행하지 않는다.
+
+Codex를 사용하는 클라이언트에는 같은 Wiki MCP를 `doraft setup`으로 중복 등록하지 않는다. 네이티브 연결 UI나 `codex mcp login`으로 별도 OAuth를 만들지 않는다.
 
 ### `invalid_target` 복구
 
@@ -30,7 +34,7 @@ Codex를 사용하는 클라이언트에는 같은 Wiki MCP를 `doraft setup`으
 
 1. `codex plugin marketplace list --json`으로 `doraft`의 로컬 경로를 확인한다. 저장소를 옮겨 경로가 더 이상 존재하지 않으면 `codex plugin marketplace remove doraft` 후 `codex plugin marketplace add https://github.com/doraft-labs/doraft-plugins.git`로 다시 등록한다. 로컬 개발에서는 `.agents/plugins/marketplace.json`이 있는 doraft-plugins 레포 루트를 지정한다.
 2. `codex plugin add doraft-wiki@doraft`로 최신 패키지를 다시 설치한다. 소스 저장소에서는 `npm run verify:codex`로 마켓플레이스 경로·설치 버전·설치 MCP 주소·운영 OAuth `resource`가 모두 같은지 검사한다. 검사가 실패하면 재인증만 반복하지 말고 표시된 불일치를 먼저 고친다.
-3. Codex 데스크톱의 연결 UI에서 새 OAuth 요청을 시작하고, 새 작업에서 `list_workspaces`와 페이지 조회를 확인한다. Codex CLI를 별도로 사용한다면 `codex mcp login doraft-wiki --scopes doraft:wiki:read,doraft:wiki:write,offline_access`로 CLI 세션을 재인증한다. CLI의 인증 성공을 데스크톱 인증 성공으로 간주하지 않는다.
+3. 위 공유 helper의 `login` 절차로 재연결하고 새 작업에서 실제 도구 호출을 확인한다.
 
 ## Claude
 

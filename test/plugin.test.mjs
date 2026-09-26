@@ -30,7 +30,9 @@ test('Codex와 Claude manifest는 같은 앱과 스킬을 제공하되 MCP는 Co
     assert.deepEqual(await listDirs(`plugins/doraft-wiki/${manifest.skills}`), [...source.skills].sort());
     assert.equal(manifest.repository, 'https://github.com/doraft-labs/doraft-plugins');
   }
-  assert.deepEqual(codex.mcpServers, { 'doraft-wiki': { type: 'http', url: source.endpoint } });
+  assert.equal(codex.mcpServers['doraft-wiki'].url, source.endpoint);
+  assert.match(codex.mcpServers['doraft-wiki'].http_headers_helper, /oauth-helper\.mjs.*headers/);
+  assert.equal(await readText('plugins/doraft-wiki/scripts/oauth-helper.mjs'), await readText('source/runtime/oauth-helper.mjs'));
   assert.deepEqual(codex.interface.capabilities, ['Read', 'Write']);
 });
 
