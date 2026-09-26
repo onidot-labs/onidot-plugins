@@ -29,7 +29,8 @@ for (const product of catalog.products) {
     author: { name: 'Doraft', url: 'https://doraft.com' }, homepage: app.guide,
     repository: catalog.repository, skills: './skills/' };
   outputs.set(`${base}/.codex-plugin/plugin.json`, json({ ...common,
-    mcpServers: { [app.name]: { type: 'http', url: app.endpoint } },
+    mcpServers: { [app.name]: { type: 'http', url: app.endpoint,
+      http_headers_helper: `node "\${CODEX_HOME:-$HOME/.codex}/plugins/cache/doraft/${app.name}/${app.version}/scripts/oauth-helper.mjs" headers` } },
     interface: { displayName: app.displayName, shortDescription: app.shortDescription,
       longDescription: app.description, developerName: 'Doraft', category: 'Productivity',
       capabilities: ['Read', 'Write'], websiteURL: 'https://doraft.com',
@@ -37,6 +38,7 @@ for (const product of catalog.products) {
       defaultPrompt: app.defaultPrompt } }));
   // Claude account connector owns MCP. A root .mcp.json would silently attach a second server in Code.
   outputs.set(`${base}/.claude-plugin/plugin.json`, json(common));
+  outputs.set(`${base}/scripts/oauth-helper.mjs`, await readFile(resolve(root, 'source/runtime/oauth-helper.mjs'), 'utf8'));
   const hashes = {};
   for (const skill of app.skills) {
     const markdown = await readFile(resolve(root, `source/skills/${skill}/SKILL.md`), 'utf8');
@@ -48,7 +50,7 @@ for (const product of catalog.products) {
     name:app.name, displayName:app.displayName, version:app.version, repository:catalog.repository,
     issuer:catalog.issuer, resource:app.endpoint, files:hashes}));
   codexEntries.push({name:app.name, source:{source:'local',path:`./${base}`},
-    policy:{installation:'AVAILABLE',authentication:'ON_INSTALL'},category:'Productivity'});
+    policy:{installation:'AVAILABLE',authentication:'ON_USE'},category:'Productivity'});
   claudeEntries.push({name:app.name,source:`./${base}`,version:app.version,description:app.description});
   released.push({id:product.id,name:app.name,displayName:app.displayName,version:app.version,endpoint:app.endpoint});
 }

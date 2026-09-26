@@ -11,7 +11,7 @@ const hashes=[];
 for(const product of catalog.products){
  const name=`${product.name}-${product.version}.zip`, destination=resolve(root,'dist',name);
  rmSync(destination,{force:true});
- execFileSync('zip',['-q','-X','-r',destination,'.codex-plugin','.claude-plugin','skills'],{cwd:resolve(root,'plugins',product.name)});
+ execFileSync('zip',['-q','-X','-r',destination,'.codex-plugin','.claude-plugin','skills','scripts'],{cwd:resolve(root,'plugins',product.name)});
  hashes.push(`${createHash('sha256').update(readFileSync(destination)).digest('hex')}  ${name}`);
 }
 writeFileSync(resolve(root,'dist/SHA256SUMS'),hashes.join('\n')+'\n');

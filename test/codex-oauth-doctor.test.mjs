@@ -36,3 +36,7 @@ test('정식 Git 카탈로그 설치도 경로 일치로 인정한다', () => {
   assert.deepEqual(assessCodexOAuth({...expected, marketplaceSource:'https://github.com/doraft-labs/doraft-plugins.git'}), []);
   assert.ok(assessCodexOAuth({...expected, marketplaceSource:'https://github.com/doraft-labs/doraft.git'}).includes('MARKETPLACE_SOURCE_MISMATCH'));
 });
+
+test('helper 경로가 누락되거나 달라지면 설치 진단이 실패한다',()=>{
+ assert.ok(assessCodexOAuth({...expected,expectedHelper:'node helper headers',installedHelper:undefined}).includes('OAUTH_HELPER_MISMATCH'));
+});
