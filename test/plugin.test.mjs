@@ -146,6 +146,44 @@ test('Wiki 스킬은 제거된 Markdown 가져오기를 안내하지 않고 내�
   }
 });
 
+test('Wiki 스킬은 요청자별 초안 계약을 안내한다(doraft#337)', async () => {
+  const skill = await readText('plugins/doraft-wiki/skills/use-doraft-wiki/SKILL.md');
+  const lines = skill.split('\n');
+  const lineWith = (marker) => {
+    const found = lines.filter((line) => line.includes(marker));
+    assert.equal(found.length, 1, marker);
+    return found[0];
+  };
+  const section = (heading) => {
+    const start = skill.indexOf(`## ${heading}\n`);
+    assert.ok(start >= 0, heading);
+    const next = skill.indexOf('\n## ', start + 3);
+    return skill.slice(start, next < 0 ? undefined : next);
+  };
+  for (const removed of ['공동 초안', '다른 사람이 남긴 미발행 변경', '다른 작업자의 초안', '저장하지 않은 내 초안', 'currentPublishedRevisionId', '`basePublishedRevisionId`(현재 발행 Revision ID)를 `expectedPublishedRevisionId`로']) {
+    assert.ok(!skill.includes(removed), removed);
+  }
+  for (const required of ['내 초안', '다른 사람의 초안은 보이지 않고', 'draftVersion=0', '가상 초안', 'expectedDraftVersion=0', '확인 없이']) {
+    assert.ok(skill.includes(required), required);
+  }
+  // MCP 오류에는 Revision ID가 없으므로 현재 발행본을 조회하고, 사용자 확인 뒤에만 confirmStaleBase로 다시 발행한다.
+  const stale = lineWith('`STALE_DRAFT_BASE`(409)로 실패');
+  for (const required of ['publishedRevision.id', 'get_page_revision', '사용자가 덮어쓰기를 확인한 뒤에만', 'confirmStaleBase=true', '확인 없이']) assert.ok(stale.includes(required), required);
+  // 기준이 밀린 내 초안은 현재 발행본으로 CAS하고 save_page로 그대로 저장하지 않는다.
+  const current = lineWith('`expectedPublishedRevisionId`는 현재 발행 Revision ID다');
+  for (const required of ['myDraft.stale', 'publishedRevision.id']) assert.ok(current.includes(required), required);
+  assert.ok(lineWith('기준이 밀린 내 초안의 본문을 그대로 `save_page`로 저장하지 않는다').includes('사라진다'));
+  // edit_page 절차는 남의 초안이 아니라 내 초안만 막는다고 안내한다.
+  const editState = lineWith('1. **상태 조회**');
+  for (const required of ['다른 사람의 초안은 `edit_page`를 막지 않는다', '발행하지 않은 내 초안', 'myDraft.stale']) assert.ok(editState.includes(required), required);
+  // 초안이 없을 때 새 초안의 기준을 받는 도구마다 요약 절 밖의 실제 절차에서 basePublishedRevisionId 전달을 안내한다.
+  const procedures = skill.replace(section('내 초안과 발행 기준'), '').split('\n');
+  for (const tool of ['update_page_draft', 'restore_page_draft', 'add_page_attachment', 'commit_attachment_upload']) {
+    assert.ok(procedures.some((line) => line.includes(tool) && line.includes('basePublishedRevisionId') && line.includes('draftVersion')), tool);
+  }
+  assert.ok(lineWith('`includeDrafts=true`는 요청자(소유자) 자신의 초안만').includes('초안 전체 백업이라고 보고하지 않는다'));
+});
+
 test('설치 안내의 Codex 캐시 경로는 현재 제품 버전을 가리킨다', async () => {
   const source = await readJson('source/wiki.json');
   for (const path of ['README.md', 'source/skills/setup-doraft-wiki/SKILL.md']) {
