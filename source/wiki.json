@@ -1,6 +1,6 @@
 {
   "name": "doraft-wiki",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "displayName": "Doraft Wiki",
   "description": "Doraft Wiki 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
   "endpoint": "https://mcp.doraft.com/wiki",

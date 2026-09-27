@@ -7,7 +7,7 @@
       "id": "wiki",
       "name": "doraft-wiki",
       "displayName": "Doraft Wiki",
-      "version": "0.10.0",
+      "version": "0.11.0",
       "endpoint": "https://mcp.doraft.com/wiki"
     }
   ]
