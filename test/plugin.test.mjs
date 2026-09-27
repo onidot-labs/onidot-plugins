@@ -131,3 +131,27 @@ test('일반 작성 요청은 페이지 저장을 기본으로 하고 초안 보
     assert.ok(skill.includes(required), required);
   }
 });
+
+test('Wiki 스킬은 제거된 Markdown 가져오기를 안내하지 않고 내보내기를 Workspace 소유자 전용으로 안내한다(doraft#334)', async () => {
+  const source = await readJson('source/wiki.json');
+  for (const skill of source.skills) {
+    const markdown = await readText(`source/skills/${skill}/SKILL.md`);
+    for (const removed of ['preview_markdown_import', 'execute_markdown_import', 'get_import_status', '생성·이동·가져오기', '미리보기 계약']) {
+      assert.ok(!markdown.includes(removed), `${skill}: ${removed}`);
+    }
+  }
+  const skill = await readText('plugins/doraft-wiki/skills/use-doraft-wiki/SKILL.md');
+  for (const required of ['가져오기 MCP 도구는 없다', '본문 전체를 바꾸는 요청은 위 `save_page` 전체 교체 절차', 'create_markdown_export', 'get_export_status', 'Workspace 소유자', 'scope="WORKSPACE"', '페이지 첨부는 빠지고', 'includeDrafts=true', 'excludedPageAttachmentCount', 'excludedUnpublishedCount', 'job ID']) {
+    assert.ok(skill.includes(required), required);
+  }
+});
+
+test('설치 안내의 Codex 캐시 경로는 현재 제품 버전을 가리킨다', async () => {
+  const source = await readJson('source/wiki.json');
+  for (const path of ['README.md', 'source/skills/setup-doraft-wiki/SKILL.md']) {
+    const text = await readText(path);
+    const versions = [...text.matchAll(/doraft-wiki\/(\d+\.\d+\.\d+)\/scripts/g)].map((match) => match[1]);
+    assert.ok(versions.length > 0, path);
+    assert.deepEqual([...new Set(versions)], [source.version], path);
+  }
+});
