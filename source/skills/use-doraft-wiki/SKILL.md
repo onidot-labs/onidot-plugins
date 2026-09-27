@@ -9,7 +9,7 @@ description: Doraft Wiki 문서 검색·조회, 페이지 작성·수정·저장
 
 ## 조회
 
-Wiki는 Workspace → 페이지 → 하위 페이지 구조다. Space 선택이나 내부 기본 공간을 안내하지 않는다. 생성·이동·가져오기는 Workspace와 선택적 부모 페이지를 사용한다.
+Wiki는 Workspace → 페이지 → 하위 페이지 구조다. Space 선택이나 내부 기본 공간을 안내하지 않는다. 생성·이동은 Workspace와 선택적 부모 페이지를 사용한다.
 
 - `list_workspaces`로 승인된 Workspace와 활성 제품을 확인한다. 사용자 요청에 Workspace가 명시되면 해당 범위로 제한한다. 후보가 여러 개이고 의도가 모호하면 대상만 질문한다.
 - 이름·계층을 탐색할 때 `list_pages` 또는 `list_page_children`의 `includeContent=false` 경량 목록을 사용한다. 새 경로 조건을 지원하는 `list_pages`에서 발행 문서 전체를 탐색할 때는 `pathGlob="/**"`를 사용하고, 필요한 경우 `subtreeId`나 더 좁은 경로로 한정한다. 조건 없는 기존 목록은 미발행 문서를 포함하는 호환 동작이므로 발행 문서 검색과 구분한다.
@@ -63,7 +63,10 @@ Wiki는 Workspace → 페이지 → 하위 페이지 구조다. Space 선택이�
 - `get_page_permissions`와 `preview_page_change`로 현재 대상·영향·기대 버전을 확인한 뒤 대응 도구를 호출한다. 공개 공유, 권한 변경, 이동, 소유권 이전, 휴지통 및 영구 삭제는 사용자가 요청한 정확한 범위에서 수행한다.
 - Workspace 승인, 사용자 멤버십, 페이지 ACL, credential의 현재 작업별 권한이 모두 적용된다. 문서 쓰기 권한만으로 공개 공유나 영구삭제가 허용된다고 가정하지 않는다. 권한 거부를 다른 도구나 다른 계정으로 우회하지 않는다.
 - 댓글은 `list_page_comments`, `create_page_comment`, `delete_page_comment`를 사용한다. 외부 발신 요청이 없는 상황에서 댓글을 임의로 남기지 않는다.
-- 첨부 및 Markdown 가져오기·내보내기는 도구가 제공한 attachment/job ID와 미리보기 계약을 따른다. 서버가 사용자의 로컬 파일 경로를 읽을 수 있다고 가정하지 않는다.
+- 첨부는 도구가 제공한 attachment ID 계약을 따른다. 서버가 사용자의 로컬 파일 경로를 읽을 수 있다고 가정하지 않는다.
+- Markdown 가져오기 MCP 도구는 없다. 파일 내용을 Wiki에 옮길 때 새 문서는 위 `save_page` 절차로, 기존 문서의 일부 반영은 위 `edit_page` 절차로, 파일 내용으로 본문 전체를 바꾸는 요청은 위 `save_page` 전체 교체 절차로 한다. YAML front matter는 제목·본문으로 정리하고, 로컬 이미지·파일 경로는 첨부로 올린 뒤 링크를 바꾼다. 웹 편집 화면의 「가져오기」는 사용자가 `.md` 파일 하나로 현재 페이지 본문을 덮어쓰는 기능이다.
+- Markdown 내보내기(`create_markdown_export`, `get_export_status`)는 Workspace 소유자만 할 수 있고 `scope="WORKSPACE"`만 허용된다. 본문에 연결된 첨부는 담기지만 페이지 첨부는 빠지고, 미발행 페이지는 `includeDrafts=true`일 때만 담긴다. 도구가 돌려준 job ID로 상태를 확인하고, 결과를 보고할 때 `warnings`·`excludedPageAttachmentCount`·`excludedUnpublishedCount`와 만료 시각을 함께 알린다. 제외 항목이 있으면 전체 백업이라고 보고하지 않는다. MCP에는 다운로드 도구가 없다. 소유자는 Console Workspace 설정의 「내보내기」에서 직접 만들고 받을 수도 있다.
+- 내보내기가 `FORBIDDEN`이면 메시지로 원인을 구분한다. 소유자가 아니면 소유자에게 요청하도록 안내하고, 소유자인데 연결 권한(첨부 조회)이 없으면 `setup-doraft-wiki` 절차로 연결 권한과 Workspace 승인 범위를 확인한다. 어느 쪽도 다른 도구나 계정으로 우회하지 않는다.
 
 ## 결과 보고
 
