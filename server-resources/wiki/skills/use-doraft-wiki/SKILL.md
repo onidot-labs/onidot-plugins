@@ -58,6 +58,24 @@ Wiki는 Workspace → 페이지 → 하위 페이지 구조다. Space 선택이�
 - 충돌하면 최신 버전과 내용을 다시 읽고 사용자·다른 작업자의 변경을 보존한다. 버전 값을 임의로 올리거나 무조건 재시도하여 덮어쓰지 않는다.
 - `list_page_revisions`, `get_page_revision`, `restore_page_draft`로 이력을 확인하고 복원한다. 복원은 임시 초안이며 별도 저장 요청 전에는 페이지를 바꾸지 않는다.
 
+## 이미지·파일 첨부
+
+첨부는 두 종류다. **본문 첨부**(`BODY`)는 본문에 이미지나 링크로 넣는 파일이고 공동 초안이 참조한다. **페이지 첨부**(`PAGE_FILE`)는 본문 밖 페이지 첨부 목록에 붙는 파일이며 `list_page_files`로 본다.
+
+- 수백 KB 이하의 작은 파일만 `add_page_attachment`(base64)로 올린다. 그보다 큰 파일은 도구 인자에 내용을 담지 않고 아래 업로드 세션을 쓴다.
+- 서버는 사용자의 로컬 파일 경로를 읽지 못한다. 파일은 에이전트가 셸에서 `curl`로 직접 보낸다.
+
+업로드 세션 절차:
+
+1. **세션 생성**: `create_attachment_upload`에 `pageId`, `fileName`, `mimeType`, `sizeBytes`(실제 바이트 수), `target`(`BODY` 또는 `PAGE_FILE`)을 준다. 가능하면 `sha256`(`shasum -a 256 <파일>`의 값)도 준다. 파일 1개 한도와 서버 공간을 여기서 먼저 확인한다.
+2. **업로드**: 응답의 `uploadCommand`에서 `<FILE>`을 로컬 파일 경로로 바꿔 셸에서 실행한다. 응답 JSON의 `complete`가 `true`면 다 받은 것이다.
+3. **이어 올리기**: 연결이 끊기면 `resumeCommand`대로 `HEAD` 응답의 `Upload-Offset`을 확인하고 `curl -C <Upload-Offset>`로 나머지를 보낸다. `get_attachment_upload`로도 받은 바이트 수와 상태를 볼 수 있다. 처음부터 다시 보내지 않는다.
+4. **확정**: `commit_attachment_upload`를 호출한다. `BODY`는 `get_page_draft(includeContent=false)`로 확인한 `draftVersion`을 `expectedDraftVersion`으로 준다. 응답이 유실되면 같은 `uploadId`로 다시 호출한다. 같은 결과가 돌아오며 첨부가 두 번 생기지 않는다.
+5. **본문에 넣기(`BODY`)**: 응답의 `markdown`을 곧바로 `edit_page`로 원하는 위치에 넣는다. 기준 버전은 응답의 `draftVersion`과 현재 발행 Revision ID다. 본문에 넣지 않은 본문 첨부는 다음 초안 저장 때 참조가 사라져 정리된다.
+
+- 업로드 토큰(`token`)은 그 세션에만 쓰는 짧은 수명의 값이다. 명령 실행에만 쓰고 사용자에게 보여 주거나 파일·문서에 남기지 않는다. 세션은 24시간 뒤 만료된다.
+- 한도(파일 1개·페이지·Workspace) 초과나 서버 공간 부족으로 거절되면 응답의 한도와 범위를 사용자에게 알린다. 파일을 쪼개거나 다른 페이지로 옮겨 한도를 우회하지 않는다.
+
 ## 권한·공유·파괴적 변경
 
 - `get_page_permissions`와 `preview_page_change`로 현재 대상·영향·기대 버전을 확인한 뒤 대응 도구를 호출한다. 공개 공유, 권한 변경, 이동, 소유권 이전, 휴지통 및 영구 삭제는 사용자가 요청한 정확한 범위에서 수행한다.

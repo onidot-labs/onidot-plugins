@@ -20,7 +20,7 @@ Wiki 앱의 연결만 다룬다. 별도 Platform 플러그인은 필요하지 �
 0.9.0부터 로컬 macOS/Linux Codex는 공유 OAuth helper로 갱신을 한 번만 수행한다. Node.js 24 이상과 `http_headers_helper`를 지원하는 Codex가 필요하다. 원격 실행 및 Windows에서는 이 helper 경로를 검증하지 않았다. 지원되지 않는 환경에서 설치·연결 성공을 주장하지 않는다. Claude와 GPT 웹의 계정 OAuth는 별개다.
 
 1. `codex plugin add doraft-wiki@doraft`로 설치하고 출력의 installedPath를 확인한다. 아래 경로는 기본 Codex 캐시 기준이다. CODEX_HOME을 바꾸면 같은 위치를 사용한다.
-2. `node "${CODEX_HOME:-$HOME/.codex}/plugins/cache/doraft/doraft-wiki/0.9.1/scripts/oauth-helper.mjs" login`으로 브라우저 OAuth를 시작한다. 인가 서버는 `https://api.doraft.com`, 토큰 대상은 `https://mcp.doraft.com/wiki`다. 사용자에게 승인받은 Workspace 범위만 선택한다.
+2. `node "${CODEX_HOME:-$HOME/.codex}/plugins/cache/doraft/doraft-wiki/0.10.0/scripts/oauth-helper.mjs" login`으로 브라우저 OAuth를 시작한다. 인가 서버는 `https://api.doraft.com`, 토큰 대상은 `https://mcp.doraft.com/wiki`다. 사용자에게 승인받은 Workspace 범위만 선택한다.
 3. 같은 명령의 `login`을 `status`로 바꾸어 저장 상태를 확인한다. `headers`는 비밀 헤더를 출력하므로 진단용으로 실행하거나 출력 내용을 공유하지 않는다. 토큰은 private 런타임 파일에 저장되며 다른 클라이언트의 토큰을 복사하지 않는다.
 4. 이전 0.8.0 네이티브 OAuth가 있으면 새 helper 로그인 성공 후 `codex mcp logout doraft-wiki`로 기존 로컬 인증만 제거한다. 네이티브 인증이 남으면 helper보다 우선하여 갱신 경쟁이 계속될 수 있다. 서버의 다른 grant를 철회하지 않는다. 이후 새 작업에서 실제 `list_workspaces`와 페이지 조회를 확인한다.
 5. `OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED`는 갱신 응답 유실로 재사용을 막은 상태다. `login`을 다시 실행한다. 프로세스가 종료되면 SQLite 운영체제 잠금이 자동 해제된다. `OAUTH_REFRESH_LOCKED`는 다른 프로세스가 실행 중일 수 있으므로 잠금 파일을 삭제하지 않는다.
