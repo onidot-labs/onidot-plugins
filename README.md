@@ -63,3 +63,7 @@ npm run package
 새 제품은 source/products.json에서 planned로 시작한다. 서버 MCP와 OAuth 계약을 검증한 뒤 released로 전환하고 source/<product>.json을 추가한다. 릴리스 커밋·태그를 고정한 뒤 서버에서 명시적으로 반입하며, 플러그인 생성기가 서버 repo에 직접 쓰지 않는다.
 
 공식 지원 근거: [Claude 원격 커넥터](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp), [Claude 플러그인](https://support.claude.com/en/articles/13837440-use-plugins-in-claude), [Claude Code 플러그인](https://code.claude.com/docs/en/plugins), [Codex 플러그인](https://developers.openai.com/codex/plugins).
+
+## 로컬 릴리스 검증
+
+GitHub Actions 전체 CI는 실행하지 않습니다(#11). clean commit에서 `npm run verify:local`을 실행하면 기존 Actions와 동일하게 `npm test`(manifest 생성 결과 확인 포함)와 `npm run package`를 순서대로 실행합니다. 실패하면 후속 packaging을 중단합니다. 검증 SHA와 결과를 PR에 남깁니다. 로컬 로그는 독립 배포 인증을 대신하지 않으며 이 변경은 보호 규칙·서버 반입 digest 검증·플러그인 릴리스를 바꾸지 않습니다.
