@@ -14,6 +14,7 @@
     "check": "node scripts/generate.mjs --check",
     "test": "node --test test/*.test.mjs && node scripts/generate.mjs --check",
     "verify:codex": "node scripts/verify-codex-oauth.mjs",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "verify:local": "npm test && npm run package"
   }
 }
