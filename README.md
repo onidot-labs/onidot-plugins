@@ -4,7 +4,7 @@ Doraft 제품별 AI 플러그인의 **유일한 원본·배포 레포**다. 서�
 
 | 제품 | 설치 ID | 상태 | MCP |
 | --- | --- | --- | --- |
-| Doraft Wiki | doraft-wiki@doraft | 0.11.0 | https://mcp.doraft.com/wiki |
+| Doraft Wiki | doraft-wiki@doraft | 0.12.0 | https://mcp.doraft.com/wiki |
 | Doraft Notes | doraft-notes@doraft | 개발 예정·설치 불가 | 미공개 |
 
 같은 제품은 모든 클라이언트에서 같은 이름을 쓴다. 제품 전체를 묶은 만능 플러그인이나 Codex/Claude 접미사 변형을 만들지 않는다. 로그인은 Doraft Platform에 공통으로 하고 권한·토큰 대상은 제품별로 분리한다.
@@ -16,7 +16,7 @@ Doraft 제품별 AI 플러그인의 **유일한 원본·배포 레포**다. 서�
 ```sh
 codex plugin marketplace add https://github.com/doraft-labs/doraft-plugins.git
 codex plugin add doraft-wiki@doraft
-node "${CODEX_HOME:-$HOME/.codex}/plugins/cache/doraft/doraft-wiki/0.11.0/scripts/oauth-helper.mjs" login
+node "${CODEX_HOME:-$HOME/.codex}/plugins/cache/doraft/doraft-wiki/0.12.0/scripts/oauth-helper.mjs" login
 ```
 
 로컬 macOS/Linux에서 Node.js 24 이상이 필요하다. 공유 OAuth helper가 여러 작업의 갱신을 직렬화한다. 기존 0.8.0 사용자는 helper 로그인 성공 후 `codex mcp logout doraft-wiki`로 이전 로컬 네이티브 인증을 제거하고 새 작업을 시작한다. Windows·원격 실행은 이 helper 경로를 검증하지 않았다. 플러그인에 스킬과 원격 MCP가 함께 있다. 같은 제품을 `codex mcp add`나 `doraft setup`으로 또 등록하지 않는다. CLI 로그인 성공 후 실제 작업에서 list_workspaces와 문서 조회를 확인한다.
@@ -67,3 +67,9 @@ npm run package
 ## 로컬 릴리스 검증
 
 GitHub Actions 전체 CI는 실행하지 않습니다(#11). clean commit에서 `npm run verify:local`을 실행하면 기존 Actions와 동일하게 `npm test`(manifest 생성 결과 확인 포함)와 `npm run package`를 순서대로 실행합니다. 실패하면 후속 packaging을 중단합니다. 검증 SHA와 결과를 PR에 남깁니다. 로컬 로그는 독립 배포 인증을 대신하지 않으며 이 변경은 보호 규칙·서버 반입 digest 검증·플러그인 릴리스를 바꾸지 않습니다.
+
+## 서버 정본 bootstrap (0.12.0 후보)
+
+작업 시작·재개에 manifest/context를 조회하고 서버의 `protectedActions`에 알려진 policyRevision을 전달한다. 사용자별 checkpoint는 현재 ACL·출처 revision을 다시 확인한 뒤 복원한다. 서버 활성 지침 변경마다 패키지를 재설치하지 않는다. 미지원 서버용 정적 Wiki 절차는 호환 snapshot이며 활성 업무지침 정본이 아니다.
+
+일반 MCP 서버는 다른 connector·shell·전체 세션/압축을 통제하지 않는다. Codex/Claude의 스킬 활성화와 ChatGPT 계정 앱의 실제 bootstrap 호출은 각각 해당 제품·계정에서 확인해야 한다. 0.12.0 패키지 생성/테스트와 HTTP wire 검증은 실제 Codex/Claude/ChatGPT 설치·세션 검증의 대체물이 아니다. 현 후보는 아직 설치·배포·운영 활성화하지 않았다.
