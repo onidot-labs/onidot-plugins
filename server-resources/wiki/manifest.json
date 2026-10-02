@@ -3,12 +3,12 @@
   "product": "wiki",
   "name": "doraft-wiki",
   "displayName": "Doraft Wiki",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "repository": "https://github.com/doraft-labs/doraft-plugins",
   "issuer": "https://api.doraft.com",
   "resource": "https://mcp.doraft.com/wiki",
   "files": {
-    "skills/setup-doraft-wiki/SKILL.md": "a43730a7dba40e5b9df6631c16b8f8782c48ad44247c587cab04744b06ce51dd",
-    "skills/use-doraft-wiki/SKILL.md": "809a32a5f5f2fe601347984f7da1f239913f7d97c25c510f53abf8e41a230db4"
+    "skills/setup-doraft-wiki/SKILL.md": "cbc71a1f6d4f13ee2313188233dc54d9f28020d129ec938bf76940b2e533b377",
+    "skills/use-doraft-wiki/SKILL.md": "3434bba158aeee7c12676b989a347e5638655d1e1158a7b4f30859b95f276977"
   }
 }
