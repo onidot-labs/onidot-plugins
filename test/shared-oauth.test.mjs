@@ -50,7 +50,7 @@ test('위험한 파일 권한과 심볼릭 링크를 거부한다',async()=>fixt
  await assert.rejects(getHeaders({dir}),/UNSAFE/);
 }));
 test('틀린 제품 상태와 손상된 토큰 응답을 거부하고 pending을 유지한다',async()=>fixture(async dir=>{
- await writeState(dir,{...original,resource:'https://evil.example'});await assert.rejects(getHeaders({dir}),/INVALID_OAUTH_STATE/);
+ await writeState(dir,{...original,resource:'https://evil.example'});await assert.rejects(getHeaders({dir}),/OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED/);
  await writeState(dir,original);await assert.rejects(getHeaders({dir,requestTokens:async()=>({...response,access_token:'x\r\nInjected: y'})}),/INVALID_OAUTH_TOKEN_RESPONSE/);
  assert.equal(JSON.parse(await readFile(join(dir,'tokens.json'))).pendingRefresh,true);
 }));
@@ -64,4 +64,21 @@ test('손상된 상태 진단은 원문 비밀값을 출력하지 않는다',asy
  assert.equal(result.code,1);
  assert.ok(!result.stdout.includes('LEAK_ME'));
  assert.equal(JSON.parse(result.stdout).error,'INVALID_OAUTH_STATE');
+}));
+
+test('helper resource가 정본 endpoint와 일치한다', async () => {
+  const { config } = await import('../source/runtime/oauth-helper.mjs');
+  const { readFile } = await import('node:fs/promises');
+  const source = JSON.parse(await readFile(new URL('../source/wiki.json', import.meta.url), 'utf8'));
+  assert.equal(config.resource, source.endpoint);
+  assert.equal(source.endpoint, 'https://labs.onidot.com/wiki');
+});
+
+test('옛 주소 resource 상태는 전용 코드로 거부하고 상태를 바꾸지 않는다',async()=>fixture(async dir=>{
+ const old={...original,resource:'https://mcp.doraft.com/wiki',pendingRefresh:false,expiresAt:Date.now()-1000};
+ await writeState(dir,old);
+ const before=await readFile(join(dir,'tokens.json'),'utf8');
+ await assert.rejects(getHeaders({dir,requestTokens:async()=>{throw Error('must not call');}}),/OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED/);
+ assert.equal(await readFile(join(dir,'tokens.json'),'utf8'),before);
+ assert.equal(JSON.parse(before).pendingRefresh,false);
 }));

@@ -10,6 +10,13 @@ const outputs = new Map();
 const codexEntries = [], claudeEntries = [], released = [];
 const ids = new Set(), names = new Set();
 if (catalog.schemaVersion !== 1 || catalog.issuer !== 'https://api.doraft.com') throw Error('Unsupported catalog/issuer');
+assertMcpOrigin(catalog.mcpOrigin);
+function assertMcpOrigin(value) {
+  let url;
+  try { url = new URL(value); } catch { throw Error('Invalid mcpOrigin in source/products.json: absolute https origin required'); }
+  if (typeof value !== 'string' || url.protocol !== 'https:' || url.origin !== value || url.username || url.password)
+    throw Error('Invalid mcpOrigin in source/products.json: must be an https origin without path, trailing slash or credentials');
+}
 for (const product of catalog.products) {
   if (!/^[a-z][a-z0-9-]*$/.test(product.id) || ids.has(product.id)) throw Error('Invalid/duplicate product id');
   ids.add(product.id);
@@ -20,7 +27,7 @@ for (const product of catalog.products) {
   if (product.status !== 'released' || !/^[a-z][a-z0-9-]*\.json$/.test(product.source)) throw Error('Invalid product source');
   const app = JSON.parse(await readFile(resolve(root, 'source', product.source), 'utf8'));
   if (app.name !== `doraft-${product.id}` || names.has(app.name)) throw Error('Invalid/duplicate plugin name');
-  if (app.endpoint !== `https://mcp.doraft.com/${product.id}`) throw Error('Canonical product endpoint required');
+  if (app.endpoint !== `${catalog.mcpOrigin}/${product.id}`) throw Error(`Canonical product endpoint required: ${catalog.mcpOrigin}/${product.id}`);
   if (!/^\d+\.\d+\.\d+$/.test(app.version) || !app.displayName || !app.skills?.length) throw Error('Incomplete released product');
   if (new Set(app.skills).size !== app.skills.length || app.skills.some(s => !/^[a-z][a-z0-9-]*$/.test(s))) throw Error('Invalid skills');
   names.add(app.name);

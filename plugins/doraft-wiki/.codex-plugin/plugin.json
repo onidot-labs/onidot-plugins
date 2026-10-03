@@ -1,6 +1,6 @@
 {
   "name": "doraft-wiki",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Doraft Wiki 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
   "author": {
     "name": "Doraft",
@@ -12,8 +12,8 @@
   "mcpServers": {
     "doraft-wiki": {
       "type": "http",
-      "url": "https://mcp.doraft.com/wiki",
-      "http_headers_helper": "node \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/doraft/doraft-wiki/0.12.0/scripts/oauth-helper.mjs\" headers"
+      "url": "https://labs.onidot.com/wiki",
+      "http_headers_helper": "node \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/doraft/doraft-wiki/0.13.0/scripts/oauth-helper.mjs\" headers"
     }
   },
   "interface": {

@@ -6,7 +6,7 @@ import {createServer} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 
-export const config=Object.freeze({issuer:'https://api.doraft.com',resource:'https://mcp.doraft.com/wiki',scope:'doraft:wiki:read doraft:wiki:write offline_access'});
+export const config=Object.freeze({issuer:'https://api.doraft.com',resource:'https://labs.onidot.com/wiki',scope:'doraft:wiki:read doraft:wiki:write offline_access'});
 const failure=code=>new Error(code);
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const stateRoot=()=>resolve(process.env.CODEX_HOME || resolve(homedir(),'.codex'),'doraft-oauth','wiki');
@@ -47,7 +47,10 @@ export async function withLock(dir,fn,{waitMs=30000}={}){
 }
 function validToken(value){return typeof value==='string' && value.length>=16 && value.length<=4096 && !/\s/.test(value);}
 function validateState(s){
- if(s.schema!==1 || s.issuer!==config.issuer || s.resource!==config.resource || typeof s.clientId!=='string' || !s.clientId || !validToken(s.accessToken) || !validToken(s.refreshToken) || !Number.isFinite(s.expiresAt))throw failure('INVALID_OAUTH_STATE');
+ if(s.schema!==1 || s.issuer!==config.issuer)throw failure('INVALID_OAUTH_STATE');
+ // 옛 주소로 저장된 상태는 손상이 아니다. 토큰을 보내지 않고 상태 파일도 건드리지 않은 채 재로그인을 요구한다.
+ if(s.resource!==config.resource)throw failure('OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED');
+ if(typeof s.clientId!=='string' || !s.clientId || !validToken(s.accessToken) || !validToken(s.refreshToken) || !Number.isFinite(s.expiresAt))throw failure('INVALID_OAUTH_STATE');
  if(s.pendingRefresh)throw failure('OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED');
 }
 function nextState(s,result,started){
