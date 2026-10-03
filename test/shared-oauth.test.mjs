@@ -65,3 +65,11 @@ test('손상된 상태 진단은 원문 비밀값을 출력하지 않는다',asy
  assert.ok(!result.stdout.includes('LEAK_ME'));
  assert.equal(JSON.parse(result.stdout).error,'INVALID_OAUTH_STATE');
 }));
+
+test('helper resource가 정본 endpoint와 일치한다', async () => {
+  const { config } = await import('../source/runtime/oauth-helper.mjs');
+  const { readFile } = await import('node:fs/promises');
+  const source = JSON.parse(await readFile(new URL('../source/wiki.json', import.meta.url), 'utf8'));
+  assert.equal(config.resource, source.endpoint);
+  assert.equal(source.endpoint, 'https://labs.onidot.com/wiki');
+});

@@ -7,9 +7,9 @@ const expected = {
   marketplaceSource: '/workspace/doraft/doraft-plugins',
   version: '0.8.0',
   installedVersion: '0.8.0',
-  endpoint: 'https://mcp.doraft.com/wiki',
-  installedEndpoint: 'https://mcp.doraft.com/wiki',
-  advertisedResource: 'https://mcp.doraft.com/wiki',
+  endpoint: 'https://labs.onidot.com/wiki',
+  installedEndpoint: 'https://labs.onidot.com/wiki',
+  advertisedResource: 'https://labs.onidot.com/wiki',
 };
 
 test('Codex 설치와 운영 OAuth 리소스가 모두 일치하면 통과한다', () => {

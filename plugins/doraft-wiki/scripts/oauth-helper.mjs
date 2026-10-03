@@ -6,7 +6,7 @@ import {createServer} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 
-export const config=Object.freeze({issuer:'https://api.doraft.com',resource:'https://mcp.doraft.com/wiki',scope:'doraft:wiki:read doraft:wiki:write offline_access'});
+export const config=Object.freeze({issuer:'https://api.doraft.com',resource:'https://labs.onidot.com/wiki',scope:'doraft:wiki:read doraft:wiki:write offline_access'});
 const failure=code=>new Error(code);
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const stateRoot=()=>resolve(process.env.CODEX_HOME || resolve(homedir(),'.codex'),'doraft-oauth','wiki');

@@ -110,7 +110,7 @@ test('Wiki 스킬은 키워드 관련성 검색의 정렬·호환 계약을 안�
 
 test('연결 스킬은 커넥터 경로에서 서버 스킬 리소스를 안내하고 중복 등록을 막는다', async () => {
   const skill = await readText('plugins/doraft-wiki/skills/setup-doraft-wiki/SKILL.md');
-  for (const required of ['https://mcp.doraft.com/wiki', 'list_workspaces', '사용자 지정 커넥터', 'skill://doraft/<skill>/SKILL.md', 'Claude Code 클라우드', '중복 등록하지 않는다']) {
+  for (const required of ['https://labs.onidot.com/wiki', 'list_workspaces', '사용자 지정 커넥터', 'skill://doraft/<skill>/SKILL.md', 'Claude Code 클라우드', '중복 등록하지 않는다']) {
     assert.ok(skill.includes(required), required);
   }
 });

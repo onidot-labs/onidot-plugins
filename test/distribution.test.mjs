@@ -22,7 +22,7 @@ test('계획 중 Notes는 설치 카탈로그와 배포 resource에 노출되지
 test('서버 반입 산출물의 해시는 실제 스킬 바이트와 일치한다',async()=>{
  const {createHash}=await import('node:crypto');
  const manifest=await json('server-resources/wiki/manifest.json');
- assert.equal(manifest.resource,'https://mcp.doraft.com/wiki');
+ assert.equal(manifest.resource,'https://labs.onidot.com/wiki');
  for(const [path,hash] of Object.entries(manifest.files))
   assert.equal(createHash('sha256').update(await readFile(new URL('server-resources/wiki/'+path,root))).digest('hex'),hash);
 });
