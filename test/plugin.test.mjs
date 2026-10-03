@@ -193,3 +193,10 @@ test('설치 안내의 Codex 캐시 경로는 현재 제품 버전을 가리킨�
     assert.deepEqual([...new Set(versions)], [source.version], path);
   }
 });
+
+test('연결 스킬은 옛 주소 재연결·전용 오류 코드·마켓플레이스 갱신을 안내한다', async () => {
+  const skill = await readText('plugins/doraft-wiki/skills/setup-doraft-wiki/SKILL.md');
+  for (const required of ['https://mcp.doraft.com/wiki', 'OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED', 'codex plugin marketplace upgrade doraft']) {
+    assert.ok(skill.includes(required), required);
+  }
+});

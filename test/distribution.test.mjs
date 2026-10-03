@@ -44,3 +44,24 @@ test('같은 제품의 변형 이름과 제품 경로 탈출은 생성 전에 �
   } finally {await rm(temp,{recursive:true,force:true});}
  }
 });
+
+test('mcpOrigin 누락·http·끝 슬래시와 endpoint 불일치는 생성 전에 거부한다',async()=>{
+ const {mkdtemp,cp,writeFile,rm}=await import('node:fs/promises');
+ const {tmpdir}=await import('node:os');
+ const {join}=await import('node:path');
+ const {spawnSync}=await import('node:child_process');
+ const base=await json('source/products.json');
+ const {mcpOrigin,...withoutOrigin}=base;
+ const cases=[[withoutOrigin,/mcpOrigin/],[{...base,mcpOrigin:'http://labs.onidot.com'},/mcpOrigin/],[{...base,mcpOrigin:'https://labs.onidot.com/'},/mcpOrigin/],[{...base,mcpOrigin:'https://other.example'},/Canonical/]];
+ for(const [catalog,pattern] of cases){
+  const temp=await mkdtemp(join(tmpdir(),'doraft-plugin-test-'));
+  try {
+   await cp(new URL('scripts/',root),join(temp,'scripts'),{recursive:true});
+   await cp(new URL('source/',root),join(temp,'source'),{recursive:true});
+   await writeFile(join(temp,'source/products.json'),JSON.stringify(catalog));
+   const result=spawnSync(process.execPath,['scripts/generate.mjs'],{cwd:temp,encoding:'utf8'});
+   assert.notEqual(result.status,0);
+   assert.match(result.stderr,pattern);
+  } finally {await rm(temp,{recursive:true,force:true});}
+ }
+});

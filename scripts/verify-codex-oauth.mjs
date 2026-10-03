@@ -18,6 +18,7 @@ export function assessCodexOAuth(values) {
   return failures;
 }
 
+export const metadataUrl = (endpoint) => { const url = new URL(endpoint); return `${url.origin}/.well-known/oauth-protected-resource${url.pathname}`; };
 const json = (path) => readFile(path, 'utf8').then(JSON.parse);
 const codex = (...args) => {
   try {
@@ -48,7 +49,7 @@ async function main() {
   if (!installed?.enabled) throw new Error('Codex Wiki 플러그인이 설치·활성화되지 않았습니다. codex plugin add doraft-wiki@doraft를 실행하세요.');
   const cachedManifestPath = resolve(process.env.CODEX_HOME || resolve(homedir(), '.codex'), 'plugins/cache', marketplaceName, pluginName, installed.version, '.codex-plugin/plugin.json');
   const cachedManifest = await json(cachedManifestPath).catch(() => null);
-  const metadataResponse = await fetch('https://labs.onidot.com/.well-known/oauth-protected-resource/wiki', { signal: AbortSignal.timeout(10000) });
+  const metadataResponse = await fetch(metadataUrl(source.endpoint), { signal: AbortSignal.timeout(10000) });
   if (!metadataResponse.ok) throw new Error(`운영 OAuth 메타데이터 조회에 실패했습니다: HTTP ${metadataResponse.status}`);
   const metadata = await metadataResponse.json();
   const failures = assessCodexOAuth({
