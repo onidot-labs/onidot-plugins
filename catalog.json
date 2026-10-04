@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "issuer": "https://api.doraft.com",
-  "repository": "https://github.com/doraft-labs/doraft-plugins",
+  "issuer": "https://app.onidot.dev",
+  "repository": "https://github.com/onidot-labs/doraft-plugins",
   "products": [
     {
       "id": "wiki",
-      "name": "doraft-wiki",
-      "displayName": "Doraft Wiki",
+      "name": "onidot",
+      "displayName": "onidot",
       "version": "0.13.0",
-      "endpoint": "https://labs.onidot.com/wiki"
+      "endpoint": "https://mcp.onidot.dev"
     }
   ]
 }

@@ -6,7 +6,7 @@ import {createServer} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 
-export const config=Object.freeze({issuer:'https://api.doraft.com',resource:'https://labs.onidot.com/wiki',scope:'doraft:wiki:read doraft:wiki:write offline_access'});
+export const config=Object.freeze({issuer:'https://app.onidot.dev',resource:'https://mcp.onidot.dev',scope:'doraft:wiki:read doraft:wiki:write offline_access'});
 const failure=code=>new Error(code);
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const stateRoot=()=>resolve(process.env.CODEX_HOME || resolve(homedir(),'.codex'),'doraft-oauth','wiki');
@@ -47,9 +47,10 @@ export async function withLock(dir,fn,{waitMs=30000}={}){
 }
 function validToken(value){return typeof value==='string' && value.length>=16 && value.length<=4096 && !/\s/.test(value);}
 function validateState(s){
- if(s.schema!==1 || s.issuer!==config.issuer)throw failure('INVALID_OAUTH_STATE');
+ if(s.schema!==1)throw failure('INVALID_OAUTH_STATE');
  // 옛 주소로 저장된 상태는 손상이 아니다. 토큰을 보내지 않고 상태 파일도 건드리지 않은 채 재로그인을 요구한다.
- if(s.resource!==config.resource)throw failure('OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED');
+ if(s.resource!==config.resource || s.issuer==='https://api.doraft.com')throw failure('OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED');
+ if(s.issuer!==config.issuer)throw failure('INVALID_OAUTH_STATE');
  if(typeof s.clientId!=='string' || !s.clientId || !validToken(s.accessToken) || !validToken(s.refreshToken) || !Number.isFinite(s.expiresAt))throw failure('INVALID_OAUTH_STATE');
  if(s.pendingRefresh)throw failure('OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED');
 }
@@ -91,21 +92,21 @@ export async function login({dir=stateRoot()}={}){
    if(req.method!=='GET' || url.pathname!=='/callback' || !stateMatches || url.searchParams.get('iss')!==config.issuer || consumed){res.writeHead(400);res.end('Invalid OAuth callback');return;}
    consumed=true;
    if(url.searchParams.has('error') || !url.searchParams.get('code')){res.writeHead(400);res.end('OAuth denied');rejectLogin(failure('OAUTH_LOGIN_DENIED'));return;}
-   res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});res.end('Doraft Wiki login received. Return to Codex.');finish(url.searchParams.get('code'));
+   res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});res.end('onidot login received. Return to Codex.');finish(url.searchParams.get('code'));
   });
   await new Promise((res,rej)=>{server.once('error',rej);server.listen(0,'127.0.0.1',res);});
   const timer=setTimeout(()=>rejectLogin(failure('OAUTH_LOGIN_TIMEOUT')),300000);
   try{
    const redirect=`http://127.0.0.1:${server.address().port}/callback`;
-   const client=await post('/oauth2/register',{client_name:'Doraft Wiki',redirect_uris:[redirect],token_endpoint_auth_method:'none',grant_types:['authorization_code','refresh_token'],response_types:['code']},true);
+   const client=await post('/oauth2/register',{client_name:'onidot',redirect_uris:[redirect],token_endpoint_auth_method:'none',grant_types:['authorization_code','refresh_token'],response_types:['code']},true);
    if(typeof client.client_id!=='string' || !client.client_id)throw failure('INVALID_OAUTH_CLIENT');
    const url=new URL(config.issuer+'/oauth2/authorize');
    url.search=new URLSearchParams({response_type:'code',client_id:client.client_id,redirect_uri:redirect,scope:config.scope,resource:config.resource,state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
-   process.stderr.write(`Open this Doraft login URL in your browser:\n${url}\n`);
+   process.stderr.write(`Open this onidot login URL in your browser:\n${url}\n`);
    const code=await callback;const started=Date.now();
    const result=await post('/oauth2/token',{grant_type:'authorization_code',client_id:client.client_id,code,redirect_uri:redirect,code_verifier:verifier,resource:config.resource});
    await writeState(dir,nextState({clientId:client.client_id},result,started));
-   process.stderr.write('Doraft Wiki shared OAuth login complete.\n');
+   process.stderr.write('onidot shared OAuth login complete.\n');
   }finally{clearTimeout(timer);server.close();}
  });
 }
@@ -118,4 +119,4 @@ async function main(){
   catch(e){process.stdout.write(JSON.stringify({authenticated:false,error:/^[A-Z0-9_]+$/.test(e.message)?e.message:'OAUTH_LOCAL_ERROR'})+'\n');process.exitCode=1;}
  }else throw failure('Usage: oauth-helper.mjs headers|login|status');
 }
-if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{process.stderr.write(`Doraft OAuth: ${error.code==='ENOENT'?'DORAFT_LOGIN_REQUIRED':/^[A-Z0-9_]+$/.test(error.message)?error.message:'OAUTH_LOCAL_ERROR'}\n`);process.exitCode=1;});
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{process.stderr.write(`onidot OAuth: ${error.code==='ENOENT'?'DORAFT_LOGIN_REQUIRED':/^[A-Z0-9_]+$/.test(error.message)?error.message:'OAUTH_LOCAL_ERROR'}\n`);process.exitCode=1;});

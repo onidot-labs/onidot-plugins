@@ -71,7 +71,7 @@ test('helper resource가 정본 endpoint와 일치한다', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = JSON.parse(await readFile(new URL('../source/wiki.json', import.meta.url), 'utf8'));
   assert.equal(config.resource, source.endpoint);
-  assert.equal(source.endpoint, 'https://labs.onidot.com/wiki');
+  assert.equal(source.endpoint, 'https://mcp.onidot.dev');
 });
 
 test('옛 주소 resource 상태는 전용 코드로 거부하고 상태를 바꾸지 않는다',async()=>fixture(async dir=>{

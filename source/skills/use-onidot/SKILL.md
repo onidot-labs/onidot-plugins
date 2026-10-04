@@ -1,9 +1,9 @@
 ---
-name: use-doraft-wiki
-description: Doraft Wiki 문서 검색·조회, 페이지 작성·수정·저장, 임시 초안, 댓글·첨부·공유 작업을 수행합니다. 사용자가 Doraft의 문서를 읽거나 정리하거나 편집하려 할 때 사용합니다. Tasks 관리에는 사용하지 않습니다.
+name: use-onidot
+description: onidot-studio 문서 검색·조회, 페이지 작성·수정·저장, 임시 초안, 댓글·첨부·공유 작업을 수행합니다. 사용자가 onidot-studio의 문서를 읽거나 정리하거나 편집하려 할 때 사용합니다. Tasks 관리에는 사용하지 않습니다.
 ---
 
-# Doraft Wiki 사용
+# onidot-studio 사용
 
 현재 연결된 Wiki MCP 도구의 실제 입력 스키마를 따른다. 존재하지 않는 도구나 ID를 만들지 않는다. Tasks 도구는 이 플러그인의 범위에 없다.
 
@@ -110,7 +110,7 @@ Wiki는 Workspace → 페이지 → 하위 페이지 구조다. Space 선택이�
 - 첨부는 도구가 제공한 attachment ID 계약을 따른다. 서버가 사용자의 로컬 파일 경로를 읽을 수 있다고 가정하지 않는다.
 - Markdown 가져오기 MCP 도구는 없다. 파일 내용을 Wiki에 옮길 때 새 문서는 위 `save_page` 절차로, 기존 문서의 일부 반영은 위 `edit_page` 절차로, 파일 내용으로 본문 전체를 바꾸는 요청은 위 `save_page` 전체 교체 절차로 한다. YAML front matter는 제목·본문으로 정리하고, 로컬 이미지·파일 경로는 첨부로 올린 뒤 링크를 바꾼다. 웹 편집 화면의 「가져오기」는 사용자가 `.md` 파일 하나로 현재 페이지 본문을 덮어쓰는 기능이다.
 - Markdown 내보내기(`create_markdown_export`, `get_export_status`)는 Workspace 소유자만 할 수 있고 `scope="WORKSPACE"`만 허용된다. 본문에 연결된 첨부는 담기지만 페이지 첨부는 빠지고, 미발행 페이지는 `includeDrafts=true`일 때만 담긴다. `includeDrafts=true`는 요청자(소유자) 자신의 초안만 담으며, 다른 멤버의 초안은 담기지도 제외 수에 세지도 않으므로 초안 전체 백업이라고 보고하지 않는다. 도구가 돌려준 job ID로 상태를 확인하고, 결과를 보고할 때 `warnings`·`excludedPageAttachmentCount`·`excludedUnpublishedCount`와 만료 시각을 함께 알린다. 제외 항목이 있으면 전체 백업이라고 보고하지 않는다. MCP에는 다운로드 도구가 없다. 소유자는 Console Workspace 설정의 「내보내기」에서 직접 만들고 받을 수도 있다.
-- 내보내기가 `FORBIDDEN`이면 메시지로 원인을 구분한다. 소유자가 아니면 소유자에게 요청하도록 안내하고, 소유자인데 연결 권한(첨부 조회)이 없으면 `setup-doraft-wiki` 절차로 연결 권한과 Workspace 승인 범위를 확인한다. 어느 쪽도 다른 도구나 계정으로 우회하지 않는다.
+- 내보내기가 `FORBIDDEN`이면 메시지로 원인을 구분한다. 소유자가 아니면 소유자에게 요청하도록 안내하고, 소유자인데 연결 권한(첨부 조회)이 없으면 `setup-onidot` 절차로 연결 권한과 Workspace 승인 범위를 확인한다. 어느 쪽도 다른 도구나 계정으로 우회하지 않는다.
 
 ## 결과 보고
 

@@ -1,15 +1,15 @@
 {
-  "name": "doraft-wiki",
+  "name": "onidot",
   "version": "0.13.0",
-  "displayName": "Doraft Wiki",
-  "description": "Doraft Wiki 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
-  "endpoint": "https://labs.onidot.com/wiki",
-  "guide": "https://console.doraft.com/settings/connections",
+  "displayName": "onidot",
+  "description": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
+  "endpoint": "https://mcp.onidot.dev",
+  "guide": "https://app.onidot.dev/settings/connections",
   "skills": [
-    "setup-doraft-wiki",
-    "use-doraft-wiki"
+    "setup-onidot",
+    "use-onidot"
   ],
-  "shortDescription": "Doraft Wiki 문서 검색·작성·저장",
+  "shortDescription": "onidot-studio 문서 검색·작성·저장",
   "defaultPrompt": [
     "내 Wiki에서 관련 문서를 찾아 요약해 주세요.",
     "이 내용을 Wiki 페이지로 저장해 주세요."

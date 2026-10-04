@@ -4,8 +4,8 @@ import {test} from 'node:test';
 const root = new URL('../',import.meta.url);
 const json = async p => JSON.parse(await readFile(new URL(p,root),'utf8'));
 test('독립 레포의 패키지는 새 저장소를 참조한다',async()=>{
- const p=await json('plugins/doraft-wiki/.codex-plugin/plugin.json');
- assert.equal(p.repository,'https://github.com/doraft-labs/doraft-plugins');
+ const p=await json('plugins/onidot/.codex-plugin/plugin.json');
+ assert.equal(p.repository,'https://github.com/onidot-labs/doraft-plugins');
 });
 test('생성기는 다른 저장소 경로에 쓰지 않는다',async()=>{
  const s=await readFile(new URL('scripts/generate.mjs',root),'utf8');
@@ -16,13 +16,13 @@ test('계획 중 Notes는 설치 카탈로그와 배포 resource에 노출되지
  const source=await json('source/products.json');
  assert.equal(source.products.find(p=>p.id==='notes').status,'planned');
  for(const p of ['.agents/plugins/marketplace.json','.claude-plugin/marketplace.json'])
-  assert.deepEqual((await json(p)).plugins.map(p=>p.name),['doraft-wiki']);
+  assert.deepEqual((await json(p)).plugins.map(p=>p.name),['onidot']);
  assert.deepEqual((await json('catalog.json')).products.map(p=>p.id),['wiki']);
 });
 test('서버 반입 산출물의 해시는 실제 스킬 바이트와 일치한다',async()=>{
  const {createHash}=await import('node:crypto');
  const manifest=await json('server-resources/wiki/manifest.json');
- assert.equal(manifest.resource,'https://labs.onidot.com/wiki');
+ assert.equal(manifest.resource,'https://mcp.onidot.dev');
  for(const [path,hash] of Object.entries(manifest.files))
   assert.equal(createHash('sha256').update(await readFile(new URL('server-resources/wiki/'+path,root))).digest('hex'),hash);
 });
@@ -31,7 +31,7 @@ test('같은 제품의 변형 이름과 제품 경로 탈출은 생성 전에 �
  const {tmpdir}=await import('node:os');
  const {join}=await import('node:path');
  const {spawnSync}=await import('node:child_process');
- for(const patch of [{name:'doraft-wiki-codex'},{endpoint:'https://api.doraft.com/mcp/wiki'},{skills:['../secret']}]) {
+ for(const patch of [{name:'onidot-codex'},{name:'doraft-wiki'},{endpoint:'https://mcp.onidot.dev/wiki'},{endpoint:'https://mcp.onidot.dev/'},{endpoint:'https://api.doraft.com/mcp/wiki'},{skills:['../secret']}]) {
   const temp=await mkdtemp(join(tmpdir(),'doraft-plugin-test-'));
   try {
    await cp(new URL('scripts/',root),join(temp,'scripts'),{recursive:true});

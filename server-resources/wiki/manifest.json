@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "product": "wiki",
-  "name": "doraft-wiki",
-  "displayName": "Doraft Wiki",
+  "name": "onidot",
+  "displayName": "onidot",
   "version": "0.13.0",
-  "repository": "https://github.com/doraft-labs/doraft-plugins",
-  "issuer": "https://api.doraft.com",
-  "resource": "https://labs.onidot.com/wiki",
+  "repository": "https://github.com/onidot-labs/doraft-plugins",
+  "issuer": "https://app.onidot.dev",
+  "resource": "https://mcp.onidot.dev",
   "files": {
-    "skills/setup-doraft-wiki/SKILL.md": "859c20befe18130c9593e3402fc32d6de3c12e07f37b6aa16472b16c2de62861",
-    "skills/use-doraft-wiki/SKILL.md": "3434bba158aeee7c12676b989a347e5638655d1e1158a7b4f30859b95f276977"
+    "skills/setup-onidot/SKILL.md": "476481fddd64f303a74962130248ec6a9816613776369a240e3f8042ab2d0b8f",
+    "skills/use-onidot/SKILL.md": "f751c0e33a455f6768d14a359f2ec50ff50be111d31fe730d5bfbe580c0ddd64"
   }
 }

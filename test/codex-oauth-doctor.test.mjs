@@ -7,9 +7,9 @@ const expected = {
   marketplaceSource: '/workspace/doraft/doraft-plugins',
   version: '0.8.0',
   installedVersion: '0.8.0',
-  endpoint: 'https://labs.onidot.com/wiki',
-  installedEndpoint: 'https://labs.onidot.com/wiki',
-  advertisedResource: 'https://labs.onidot.com/wiki',
+  endpoint: 'https://mcp.onidot.dev',
+  installedEndpoint: 'https://mcp.onidot.dev',
+  advertisedResource: 'https://mcp.onidot.dev',
 };
 
 test('Codex 설치와 운영 OAuth 리소스가 모두 일치하면 통과한다', () => {
@@ -33,7 +33,7 @@ test('운영 OAuth resource가 바뀌면 설치가 최신이어도 실패한다'
 });
 
 test('정식 Git 카탈로그 설치도 경로 일치로 인정한다', () => {
-  assert.deepEqual(assessCodexOAuth({...expected, marketplaceSource:'https://github.com/doraft-labs/doraft-plugins.git'}), []);
+  assert.deepEqual(assessCodexOAuth({...expected, marketplaceSource:'https://github.com/onidot-labs/doraft-plugins.git'}), []);
   assert.ok(assessCodexOAuth({...expected, marketplaceSource:'https://github.com/doraft-labs/doraft.git'}).includes('MARKETPLACE_SOURCE_MISMATCH'));
 });
 

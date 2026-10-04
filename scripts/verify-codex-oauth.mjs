@@ -5,12 +5,12 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const marketplaceName = 'doraft';
-const pluginName = 'doraft-wiki';
+const marketplaceName = 'onidot';
+const pluginName = 'onidot';
 
 export function assessCodexOAuth(values) {
   const failures = [];
-  if (![values.marketplaceRoot, 'https://github.com/doraft-labs/doraft-plugins.git', 'https://github.com/doraft-labs/doraft-plugins'].includes(values.marketplaceSource)) failures.push('MARKETPLACE_SOURCE_MISMATCH');
+  if (![values.marketplaceRoot, 'https://github.com/onidot-labs/doraft-plugins.git', 'https://github.com/onidot-labs/doraft-plugins'].includes(values.marketplaceSource)) failures.push('MARKETPLACE_SOURCE_MISMATCH');
   if (values.installedVersion !== values.version) failures.push('PLUGIN_VERSION_MISMATCH');
   if (values.installedEndpoint !== values.endpoint) failures.push('PLUGIN_ENDPOINT_MISMATCH');
   if (values.advertisedResource !== values.endpoint) failures.push('OAUTH_RESOURCE_MISMATCH');
@@ -18,7 +18,7 @@ export function assessCodexOAuth(values) {
   return failures;
 }
 
-export const metadataUrl = (endpoint) => { const url = new URL(endpoint); return `${url.origin}/.well-known/oauth-protected-resource${url.pathname}`; };
+export const metadataUrl = (endpoint) => { const url = new URL(endpoint); return `${url.origin}/.well-known/oauth-protected-resource${url.pathname === '/' ? '' : url.pathname}`; };
 const json = (path) => readFile(path, 'utf8').then(JSON.parse);
 const codex = (...args) => {
   try {
@@ -46,7 +46,7 @@ async function main() {
 
   const installed = codex('plugin', 'list', '--marketplace', marketplaceName, '--json').installed
     .find((item) => item.pluginId === `${pluginName}@${marketplaceName}`);
-  if (!installed?.enabled) throw new Error('Codex Wiki 플러그인이 설치·활성화되지 않았습니다. codex plugin add doraft-wiki@doraft를 실행하세요.');
+  if (!installed?.enabled) throw new Error('Codex onidot 플러그인이 설치·활성화되지 않았습니다. codex plugin add onidot@onidot를 실행하세요.');
   const cachedManifestPath = resolve(process.env.CODEX_HOME || resolve(homedir(), '.codex'), 'plugins/cache', marketplaceName, pluginName, installed.version, '.codex-plugin/plugin.json');
   const cachedManifest = await json(cachedManifestPath).catch(() => null);
   const metadataResponse = await fetch(metadataUrl(source.endpoint), { signal: AbortSignal.timeout(10000) });
@@ -62,7 +62,7 @@ async function main() {
     installedHelper: cachedManifest?.mcpServers?.[pluginName]?.http_headers_helper,
   });
   if (failures.length) throw new Error(`${failures.join(', ')}: 플러그인을 다시 설치하고 OAuth 재연결을 확인하세요.`);
-  process.stdout.write(`Codex Wiki OAuth 경로 일치: ${source.version}, ${source.endpoint}\n`);
+  process.stdout.write(`Codex onidot OAuth 경로 일치: ${source.version}, ${source.endpoint}\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

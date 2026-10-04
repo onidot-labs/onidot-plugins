@@ -1,0 +1,37 @@
+{
+  "name": "onidot",
+  "version": "0.13.0",
+  "description": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
+  "author": {
+    "name": "onidot",
+    "url": "https://onidot.com"
+  },
+  "homepage": "https://app.onidot.dev/settings/connections",
+  "repository": "https://github.com/onidot-labs/doraft-plugins",
+  "skills": "./skills/",
+  "mcpServers": {
+    "onidot": {
+      "type": "http",
+      "url": "https://mcp.onidot.dev",
+      "http_headers_helper": "node \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.13.0/scripts/oauth-helper.mjs\" headers"
+    }
+  },
+  "interface": {
+    "displayName": "onidot",
+    "shortDescription": "onidot-studio 문서 검색·작성·저장",
+    "longDescription": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
+    "developerName": "onidot",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://app.onidot.dev",
+    "privacyPolicyURL": "https://app.onidot.dev/privacy",
+    "termsOfServiceURL": "https://app.onidot.dev/terms",
+    "defaultPrompt": [
+      "내 Wiki에서 관련 문서를 찾아 요약해 주세요.",
+      "이 내용을 Wiki 페이지로 저장해 주세요."
+    ]
+  }
+}
