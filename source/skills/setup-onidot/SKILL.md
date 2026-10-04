@@ -5,7 +5,7 @@ description: onidot-studio 플러그인의 원격 MCP 연결, 브라우저 OAuth
 
 # onidot-studio 연결
 
-Wiki 앱의 연결만 다룬다. 별도 Platform 플러그인은 필요하지 않다. 제품의 정식 이름은 **onidot**, 설치 ID는 `onidot@onidot`다. 유일한 소스·배포 레포는 `https://github.com/onidot-labs/doraft-plugins`다. 같은 제품에 `(MCP)`, `Codex`, `Claude` 등의 이름 변형을 만들지 않는다. Codex와 Claude는 MCP를 받는 경로가 다르다(이슈 #223): Codex는 이 플러그인에 원격 MCP가 포함되어 있고, Claude는 이 플러그인에서 스킬만 받으며 MCP는 claude.ai 사용자 지정 커넥터로 별도 연결한다.
+Wiki 앱의 연결만 다룬다. 별도 Platform 플러그인은 필요하지 않다. 제품의 정식 이름은 **onidot**, 설치 ID는 `onidot@onidot`다. 유일한 소스·배포 레포는 `https://github.com/onidot-labs/onidot-plugins`다. 같은 제품에 `(MCP)`, `Codex`, `Claude` 등의 이름 변형을 만들지 않는다. Codex와 Claude는 MCP를 받는 경로가 다르다(이슈 #223): Codex는 이 플러그인에 원격 MCP가 포함되어 있고, Claude는 이 플러그인에서 스킬만 받으며 MCP는 claude.ai 사용자 지정 커넥터로 별도 연결한다.
 
 ## 은퇴한 주소와 설치 이름
 
@@ -20,11 +20,11 @@ MCP 도구 이름·인자, OAuth scope(`doraft:wiki:read`, `doraft:wiki:write`),
 
 ## 설치와 중복 확인
 
-- Codex: `codex plugin marketplace add https://github.com/onidot-labs/doraft-plugins.git` → `codex plugin add onidot@onidot`. 이전 같은 이름 marketplace가 있으면 위치를 확인한 뒤 onidot 항목만 교체한다.
-- Claude Code의 스킬 패키지: `claude plugin marketplace add onidot-labs/doraft-plugins` → `claude plugin install onidot@onidot --scope user`. MCP는 아래 계정 커넥터가 제공한다. 계정 플러그인 동기화로 이미 같은 스킬을 받으면 로컬 스킬 패키지를 중복 설치하지 않는다.
+- Codex: `codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git` → `codex plugin add onidot@onidot`. 이전 같은 이름 marketplace가 있으면 위치를 확인한 뒤 onidot 항목만 교체한다.
+- Claude Code의 스킬 패키지: `claude plugin marketplace add onidot-labs/onidot-plugins` → `claude plugin install onidot@onidot --scope user`. MCP는 아래 계정 커넥터가 제공한다. 계정 플러그인 동기화로 이미 같은 스킬을 받으면 로컬 스킬 패키지를 중복 설치하지 않는다.
 - Claude 웹·Desktop·모바일: 계정 설정에서 **onidot**라는 이름으로 원격 커넥터 하나를 연결한다. 모바일에서 직접 추가 UI가 없으면 웹에서 설정한 같은 계정의 커넥터를 사용한다. 일반 모바일 채팅의 모든 플러그인 파일 실행을 보장하지 않는다.
 - GPT 웹의 앱도 이름은 **onidot**, URL은 같은 canonical 주소를 쓴다. 이 클라우드 앱이 로컬 Codex 플러그인 인증을 대신한다고 가정하지 않는다. Codex에서 구주소 `codex_apps` 연결을 재인증하거나 대신 호출하지 않는다.
-- Notes 등 다른 제품은 별도 플러그인이다. Wiki 설치가 다른 제품의 권한을 추가하지 않는다. 미출시 제품의 MCP 주소를 추측해 등록하지 않는다.
+- 이 저장소는 onidot 플러그인만 배포한다. Wiki 설치가 다른 제품의 권한을 추가하지 않는다. 미출시 제품의 MCP 주소를 추측해 등록하지 않는다.
 
 ## Codex
 
@@ -43,7 +43,7 @@ Codex를 사용하는 클라이언트에는 같은 Wiki MCP를 독립 MCP 설정
 
 로그인 뒤 `invalid_target`이면 인증 요청의 `resource`가 현재 `https://mcp.onidot.dev`인지 확인한다. 이전 `https://labs.onidot.com/wiki`, `https://mcp.doraft.com/wiki` 또는 `https://api.doraft.com/mcp/wiki`를 요청하면 설치 캐시가 오래되었을 수 있다. 토큰·인가 코드·전체 인증 URL을 공유하지 않는다.
 
-1. `codex plugin marketplace list --json`으로 `onidot`의 로컬 경로를 확인한다. 저장소를 옮겨 경로가 더 이상 존재하지 않으면 `codex plugin marketplace remove onidot` 후 `codex plugin marketplace add https://github.com/onidot-labs/doraft-plugins.git`로 다시 등록한다. 경로가 유효한 git 마켓플레이스는 `codex plugin marketplace upgrade onidot`로 스냅샷을 먼저 갱신한다(`codex plugin add`만으로는 갱신되지 않아 이전 버전이 다시 설치된다). 로컬 개발에서는 `.agents/plugins/marketplace.json`이 있는 doraft-plugins 레포 루트를 지정한다.
+1. `codex plugin marketplace list --json`으로 `onidot`의 로컬 경로를 확인한다. 저장소를 옮겨 경로가 더 이상 존재하지 않으면 `codex plugin marketplace remove onidot` 후 `codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git`로 다시 등록한다. 경로가 유효한 git 마켓플레이스는 `codex plugin marketplace upgrade onidot`로 스냅샷을 먼저 갱신한다(`codex plugin add`만으로는 갱신되지 않아 이전 버전이 다시 설치된다). 로컬 개발에서는 `.agents/plugins/marketplace.json`이 있는 onidot-plugins 레포 루트를 지정한다.
 2. `codex plugin add onidot@onidot`로 최신 패키지를 다시 설치하고 출력의 version이 현재 버전인지 확인한다. 소스 저장소에서는 `npm run verify:codex`로 마켓플레이스 경로·설치 버전·설치 MCP 주소·운영 OAuth `resource`가 모두 같은지 검사한다. 검사가 실패하면 재인증만 반복하지 말고 표시된 불일치를 먼저 고친다.
 3. 위 공유 helper의 `login` 절차로 재연결하고 새 작업에서 실제 도구 호출을 확인한다.
 

@@ -7,6 +7,6 @@
     "url": "https://onidot.com"
   },
   "homepage": "https://app.onidot.dev/settings/connections",
-  "repository": "https://github.com/onidot-labs/doraft-plugins",
+  "repository": "https://github.com/onidot-labs/onidot-plugins",
   "skills": "./skills/"
 }

@@ -10,7 +10,7 @@ import {config,getHeaders,writeState} from '../source/runtime/oauth-helper.mjs';
 const run=promisify(execFile), moduleUrl=new URL('../source/runtime/oauth-helper.mjs',import.meta.url).href;
 const original={schema:1,issuer:config.issuer,resource:config.resource,clientId:'test-client',accessToken:'fake-old-access-123456789',refreshToken:'fake-refresh-123456789',expiresAt:0,pendingRefresh:false};
 const response={access_token:'fake-new-access-123456789',refresh_token:'fake-new-refresh-123456789',expires_in:900,token_type:'Bearer',scope:config.scope};
-async function fixture(fn){const dir=await mkdtemp(join(tmpdir(),'doraft-oauth-test-'));try{await writeState(dir,original);await fn(dir);}finally{await rm(dir,{recursive:true,force:true});}}
+async function fixture(fn){const dir=await mkdtemp(join(tmpdir(),'onidot-oauth-test-'));try{await writeState(dir,original);await fn(dir);}finally{await rm(dir,{recursive:true,force:true});}}
 test('8개 프로세스가 동시에 만료 토큰을 갱신해도 HTTP 요청은 한 번이다',async()=>fixture(async dir=>{
  let calls=0;const server=createServer(async(req,res)=>{calls++;await new Promise(r=>setTimeout(r,100));res.setHeader('Content-Type','application/json');res.end(JSON.stringify(response));});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));

@@ -28,7 +28,7 @@ test('Codex와 Claude manifest는 같은 앱과 스킬을 제공하되 MCP는 Co
     assert.equal(manifest.version, source.version);
     assert.equal(manifest.description, source.description);
     assert.deepEqual(await listDirs(`plugins/onidot/${manifest.skills}`), [...source.skills].sort());
-    assert.equal(manifest.repository, 'https://github.com/onidot-labs/doraft-plugins');
+    assert.equal(manifest.repository, 'https://github.com/onidot-labs/onidot-plugins');
   }
   assert.equal(codex.mcpServers['onidot'].url, source.endpoint);
   assert.match(codex.mcpServers['onidot'].http_headers_helper, /oauth-helper\.mjs.*headers/);
@@ -132,7 +132,7 @@ test('일반 작성 요청은 페이지 저장을 기본으로 하고 초안 보
   }
 });
 
-test('Wiki 스킬은 제거된 Markdown 가져오기를 안내하지 않고 내보내기를 Workspace 소유자 전용으로 안내한다(doraft#334)', async () => {
+test('Wiki 스킬은 제거된 Markdown 가져오기를 안내하지 않고 내보내기를 Workspace 소유자 전용으로 안내한다(옛 서버 #334)', async () => {
   const source = await readJson('source/wiki.json');
   for (const skill of source.skills) {
     const markdown = await readText(`source/skills/${skill}/SKILL.md`);
@@ -146,7 +146,7 @@ test('Wiki 스킬은 제거된 Markdown 가져오기를 안내하지 않고 내�
   }
 });
 
-test('Wiki 스킬은 요청자별 초안 계약을 안내한다(doraft#337)', async () => {
+test('Wiki 스킬은 요청자별 초안 계약을 안내한다(옛 서버 #337)', async () => {
   const skill = await readText('plugins/onidot/skills/use-onidot/SKILL.md');
   const lines = skill.split('\n');
   const lineWith = (marker) => {

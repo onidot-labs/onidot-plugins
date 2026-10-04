@@ -1,15 +1,16 @@
 # onidot Plugins
 
-onidot-studio AI 플러그인의 **유일한 원본·배포 레포**다. 서버·공통 Platform OAuth는 [doraft](https://github.com/onidot-labs/doraft)가 제공한다. [1단계 전환 계획·수용 기준](https://labs.onidot.com/w/0rsx2c7fbz8qm/pages/0rtfs9c01e7qr)을 따른다. 저장소는 현재 private다.
+onidot-studio AI 플러그인의 **유일한 원본·배포 레포**다. 서버는 onidot-studio가, 공통 Platform OAuth는 onidot-platform이 제공한다. [1단계 전환 계획·수용 기준](https://labs.onidot.com/w/0rsx2c7fbz8qm/pages/0rtfs9c01e7qr)을 따른다. 저장소는 현재 private다.
 
 | 제품 | 설치 ID | 상태 | MCP |
 | --- | --- | --- | --- |
 | onidot | onidot@onidot | 0.13.0 | https://mcp.onidot.dev |
-| Doraft Notes | doraft-notes (설치 불가) | 개발 예정·설치 불가 | 미공개 |
 
 같은 제품은 모든 클라이언트에서 같은 이름을 쓴다. 제품 전체를 묶은 만능 플러그인이나 Codex/Claude 접미사 변형을 만들지 않는다. 로그인은 onidot-studio에 공통으로 하고 권한·토큰 대상은 제품별로 분리한다.
 
 ## 은퇴한 주소와 설치 이름
+
+저장소의 은퇴한 주소 `https://github.com/onidot-labs/doraft-plugins`는 1단계 개명 후 GitHub에서 `https://github.com/onidot-labs/onidot-plugins`로 자동 연결된다. 신규 설치와 등록은 새 저장소 주소를 사용한다.
 
 - `https://labs.onidot.com/wiki`
 - `https://mcp.doraft.com/wiki`
@@ -25,7 +26,7 @@ MCP 도구 이름·인자, OAuth scope(`doraft:wiki:read`, `doraft:wiki:write`),
 ### Codex
 
 ```sh
-codex plugin marketplace add https://github.com/onidot-labs/doraft-plugins.git
+codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
 codex plugin add onidot@onidot
 node "${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.13.0/scripts/oauth-helper.mjs" login
 ```
@@ -39,7 +40,7 @@ node "${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.13.0/scripts/oau
 Code에 로컬 스킬 패키지도 필요하면 다음을 사용한다. 이 패키지는 MCP를 추가하지 않는다. 계정 플러그인 동기화로 같은 스킬을 이미 받으면 다시 설치하지 않는다.
 
 ```sh
-claude plugin marketplace add onidot-labs/doraft-plugins
+claude plugin marketplace add onidot-labs/onidot-plugins
 claude plugin install onidot@onidot --scope user
 ```
 

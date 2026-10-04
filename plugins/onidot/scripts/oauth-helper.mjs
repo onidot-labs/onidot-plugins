@@ -9,6 +9,8 @@ import {fileURLToPath} from 'node:url';
 export const config=Object.freeze({issuer:'https://app.onidot.dev',resource:'https://mcp.onidot.dev',scope:'doraft:wiki:read doraft:wiki:write offline_access'});
 const failure=code=>new Error(code);
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
+// 전환 호환 계약: 기존 로그인·갱신 잠금의 저장 경로와 DORAFT_LOGIN_REQUIRED 코드는 유지한다.
+// 경로를 바꾸면 이전 helper와 별개 잠금으로 같은 refresh token을 갱신할 수 있다.
 const stateRoot=()=>resolve(process.env.CODEX_HOME || resolve(homedir(),'.codex'),'doraft-oauth','wiki');
 async function privatePath(path,directory=false){
  const s=await lstat(path);

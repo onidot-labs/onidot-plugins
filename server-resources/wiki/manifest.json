@@ -4,11 +4,11 @@
   "name": "onidot",
   "displayName": "onidot",
   "version": "0.13.0",
-  "repository": "https://github.com/onidot-labs/doraft-plugins",
+  "repository": "https://github.com/onidot-labs/onidot-plugins",
   "issuer": "https://app.onidot.dev",
   "resource": "https://mcp.onidot.dev",
   "files": {
-    "skills/setup-onidot/SKILL.md": "476481fddd64f303a74962130248ec6a9816613776369a240e3f8042ab2d0b8f",
+    "skills/setup-onidot/SKILL.md": "40b77957674c3a914c41040a0657b81dec698033ae271d8a02b034a6b50b7a91",
     "skills/use-onidot/SKILL.md": "f751c0e33a455f6768d14a359f2ec50ff50be111d31fe730d5bfbe580c0ddd64"
   }
 }

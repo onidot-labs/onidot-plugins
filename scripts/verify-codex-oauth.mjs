@@ -10,7 +10,7 @@ const pluginName = 'onidot';
 
 export function assessCodexOAuth(values) {
   const failures = [];
-  if (![values.marketplaceRoot, 'https://github.com/onidot-labs/doraft-plugins.git', 'https://github.com/onidot-labs/doraft-plugins'].includes(values.marketplaceSource)) failures.push('MARKETPLACE_SOURCE_MISMATCH');
+  if (![values.marketplaceRoot, 'https://github.com/onidot-labs/onidot-plugins.git', 'https://github.com/onidot-labs/onidot-plugins'].includes(values.marketplaceSource)) failures.push('MARKETPLACE_SOURCE_MISMATCH');
   if (values.installedVersion !== values.version) failures.push('PLUGIN_VERSION_MISMATCH');
   if (values.installedEndpoint !== values.endpoint) failures.push('PLUGIN_ENDPOINT_MISMATCH');
   if (values.advertisedResource !== values.endpoint) failures.push('OAUTH_RESOURCE_MISMATCH');

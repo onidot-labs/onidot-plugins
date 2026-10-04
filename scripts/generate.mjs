@@ -26,7 +26,7 @@ for (const product of catalog.products) {
   }
   if (product.status !== 'released' || !/^[a-z][a-z0-9-]*\.json$/.test(product.source)) throw Error('Invalid product source');
   const app = JSON.parse(await readFile(resolve(root, 'source', product.source), 'utf8'));
-  if (app.name !== (product.id === 'wiki' ? 'onidot' : `doraft-${product.id}`) || names.has(app.name)) throw Error('Invalid/duplicate plugin name');
+  if (app.name !== (product.id === 'wiki' ? 'onidot' : `onidot-${product.id}`) || names.has(app.name)) throw Error('Invalid/duplicate plugin name');
   const endpoint = product.id === 'wiki' ? catalog.mcpOrigin : `${catalog.mcpOrigin}/${product.id}`;
   if (app.endpoint !== endpoint) throw Error(`Canonical product endpoint required: ${endpoint}`);
   if (!/^\d+\.\d+\.\d+$/.test(app.version) || !app.displayName || !app.skills?.length) throw Error('Incomplete released product');

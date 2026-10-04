@@ -2,18 +2,12 @@
   "schemaVersion": 1,
   "issuer": "https://app.onidot.dev",
   "mcpOrigin": "https://mcp.onidot.dev",
-  "repository": "https://github.com/onidot-labs/doraft-plugins",
+  "repository": "https://github.com/onidot-labs/onidot-plugins",
   "products": [
     {
       "id": "wiki",
       "status": "released",
       "source": "wiki.json"
-    },
-    {
-      "id": "notes",
-      "name": "doraft-notes",
-      "displayName": "Doraft Notes",
-      "status": "planned"
     }
   ]
 }

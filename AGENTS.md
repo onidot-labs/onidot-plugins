@@ -2,9 +2,9 @@
 
 상위 onidot 작업공간 지침을 따른다. 명세·계획·결과 정본은 onidot-studio Wiki다.
 
-- 이 레포가 제품 플러그인 원본·생성기·카탈로그·릴리스를 소유한다. 서버 코드와 인증 정책은 onidot-labs/doraft가 소유한다.
+- onidot-labs/onidot-plugins가 onidot 플러그인 원본·생성기·카탈로그·릴리스를 소유한다. 서버 코드는 onidot-studio가, 공통 인증 정책은 onidot-platform이 소유한다.
 - source/products.json과 source/<product>.json, source/skills가 정본이다. plugins/, server-resources/, catalog.json 및 두 marketplace는 npm run generate로 생성한다.
-- 출시 Wiki 플러그인은 ID·이름 onidot 하나를 유지한다. 서버 반입용 product ID wiki와 외부 MCP/OAuth 계약은 유지한다. 미출시 Notes는 별도 planned 제품이다. 클라이언트 접미사로 다른 플러그인을 만들지 않는다.
+- 출시 Wiki 플러그인은 ID·이름 onidot 하나를 유지한다. 서버 반입용 product ID wiki와 외부 MCP/OAuth 계약은 유지한다. 이 저장소에는 onidot 제품만 두며 다른 제품의 planned 항목을 넣지 않는다. 클라이언트 접미사로 다른 플러그인을 만들지 않는다.
 - Codex는 manifest inline MCP, Claude는 계정 connector + skills-only 패키지다. 루트 .mcp.json은 Claude Code에 중복 MCP를 등록하므로 생성하지 않는다.
 - 미출시 제품은 status=planned이며 카탈로그 설치 목록에 넣지 않는다.
 - 생성기는 레포 외부에 쓰지 않는다. 서버는 고정 commit과 SHA256을 확인해 server-resources를 반입한다.
