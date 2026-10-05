@@ -1,83 +1,137 @@
 ---
 name: setup-onidot
-description: onidot-studio 플러그인의 원격 MCP 연결, 브라우저 OAuth, Workspace 권한 선택, 연결 오류를 안내합니다. 사용자가 onidot-studio를 연결하거나 인증을 복구하려 할 때 사용합니다.
+description: 선택한 onidot 인스턴스의 MCP 연결, OAuth, Space 승인 범위와 연결 오류를 안내합니다.
 ---
 
-# onidot-studio 연결
+# onidot 연결
 
-Wiki 앱의 연결만 다룬다. 별도 Platform 플러그인은 필요하지 않다. 제품의 정식 이름은 **onidot**, 설치 ID는 `onidot@onidot`다. 유일한 소스·배포 레포는 `https://github.com/onidot-labs/onidot-plugins`다. 같은 제품에 `(MCP)`, `Codex`, `Claude` 등의 이름 변형을 만들지 않는다. Codex와 Claude는 MCP를 받는 경로가 다르다(이슈 #223): Codex는 이 플러그인에 원격 MCP가 포함되어 있고, Claude는 이 플러그인에서 스킬만 받으며 MCP는 claude.ai 사용자 지정 커넥터로 별도 연결한다.
+onidot 플러그인은 인스턴스 주소를 고정하지 않는다. 연결마다 사용자가 선택한 앱 주소 `APP_URL`, MCP 주소 `MCP_URL`, 별칭 `ALIAS`를 사용한다. 등록 이름은 `onidot-<ALIAS>`다. 예를 들어 집은 `onidot-home`, 회사 로컬은 `onidot-work`로 구별할 수 있으나 이 이름이나 개인 도메인을 필수값으로 쓰지 않는다.
 
-## 은퇴한 주소와 설치 이름
+## 연결 절차
 
-- `https://labs.onidot.com/wiki`
-- `https://mcp.doraft.com/wiki`
-- `https://api.doraft.com/mcp/wiki`
-- `https://api.doraft.com/mcp`
+1. 설치한 인스턴스의 앱 설정에서 앱 주소와 MCP 주소를 확인한다. 기본 MCP 주소는 앱 주소의 `/mcp`지만 별도 호스트 설정이 있으면 그 정확한 주소를 사용한다. 요청 Host나 이전 인스턴스 주소로 추측하지 않는다.
+2. 클라이언트의 MCP/커넥터 설정에서 선택한 주소와 별칭을 입력한다. 기존 동일 연결이 있으면 중복 등록하지 않는다. `oni` 연결 등록은 후속 제공 기능이며 현재 설치되어 있다고 가정하지 않는다. 사용 중인 클라이언트가 제공하는 수동 원격 MCP 등록 절차를 따른다.
+3. 해당 인스턴스의 OAuth 안내를 따라 로그인한다. 승인할 Space와 READ/WRITE 범위는 사용자 요청에 맞춘다. 비밀번호·승인·토큰 입력은 사람이 수행하고 비밀값을 화면 캡처·진단 로그·보고서에 남기지 않는다.
+4. 초기화 결과의 `serverInfo.name=onidot`, 인스턴스 별칭·제공 방식·연결 모드를 확인한다. `list_spaces`와 허용된 페이지의 실제 조회를 실행해 연결을 검증한다. 설정 화면 성공만으로 완료라고 하지 않는다.
+5. **쓰기는 읽기·쓰기 연결에, 읽기 전용 연결은 참고만** 한다. READ 연결에는 쓰기 도구가 보이지 않으며 직접 요청도 서버가 거부한다. 쓰기 실패를 다른 인스턴스에 저장하는 방식으로 우회하지 않는다.
 
-위 주소는 은퇴한 주소다. 새 MCP 주소·보호 리소스는 `https://mcp.onidot.dev`(루트 경로), OAuth 발급자는 `https://app.onidot.dev`, 커넥터·서버 이름은 `onidot`이다. 옛 설치 ID `doraft-wiki@doraft`를 새 ID `onidot@onidot`으로 전환한다. 기존 `doraft` marketplace를 이름만 바꿔 갱신하지 말고 아래 새 marketplace를 추가한다. 새 연결의 실제 조회를 검증한 뒤 옛 플러그인·커넥터의 로컬 등록만 제거하며 다른 플러그인이나 서버 grant는 철회하지 않는다. 옛 주소의 토큰은 이전하지 않고 새 주소에서 로그인한다.
+## 전환과 오류 확인
 
-MCP 도구 이름·인자, OAuth scope(`doraft:wiki:read`, `doraft:wiki:write`), 토큰 접두어(`dft_`), `X-Doraft-Expected-User-Id`와 REST 경로는 유지한다. 서버 스킬 리소스 URI의 `skill://doraft/` namespace도 서버 계약에 맞춰 유지하며 스킬 이름만 `setup-onidot`, `use-onidot`으로 바꾼다.
+- 옛 `dft_` 토큰은 받지 않는다. 전환 후 선택한 인스턴스로 다시 인가한다. 새 PAT/access/refresh 접두어는 `oni_pat_`·`oni_at_`·`oni_rt_`다. 토큰 내용을 출력하지 않는다.
+- OAuth scope `doraft:wiki:*`는 기존 권한 계약이다. 이름에 맞추려고 `onidot:*`로 바꾸지 않는다.
+- `invalid_target`·`invalid_scope`이면 실제 연결의 client/app, resource, 요청 scope와 선택한 서버의 메타데이터를 비교한다. 로컬 플러그인과 클라우드 커넥터의 인증을 같은 것으로 취급하지 않는다.
+- 401은 다시 로그인하고, 403은 승인 범위와 현재 Space/페이지 권한을 확인한다. 404는 새 세션 초기화 또는 현재 페이지 권한을 확인한다. 같은 사용자라도 연결별 승인 범위를 다시 조회한다.
+- 문서 작업은 `skill://onidot/use-onidot/SKILL.md`를 따른다. 특정 MCP 등록 이름을 작업 스킬에 고정하지 않는다.
 
-## 설치와 중복 확인
+## 클라이언트별 수동 등록
 
-- Codex: `codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git` → `codex plugin add onidot@onidot`. 이전 같은 이름 marketplace가 있으면 위치를 확인한 뒤 onidot 항목만 교체한다.
-- Claude Code의 스킬 패키지: `claude plugin marketplace add onidot-labs/onidot-plugins` → `claude plugin install onidot@onidot --scope user`. MCP는 아래 계정 커넥터가 제공한다. 계정 플러그인 동기화로 이미 같은 스킬을 받으면 로컬 스킬 패키지를 중복 설치하지 않는다.
-- Claude 웹·Desktop·모바일: 계정 설정에서 **onidot**라는 이름으로 원격 커넥터 하나를 연결한다. 모바일에서 직접 추가 UI가 없으면 웹에서 설정한 같은 계정의 커넥터를 사용한다. 일반 모바일 채팅의 모든 플러그인 파일 실행을 보장하지 않는다.
-- GPT 웹의 앱도 이름은 **onidot**, URL은 같은 canonical 주소를 쓴다. 이 클라우드 앱이 로컬 Codex 플러그인 인증을 대신한다고 가정하지 않는다. Codex에서 구주소 `codex_apps` 연결을 재인증하거나 대신 호출하지 않는다.
-- 이 저장소는 onidot 플러그인만 배포한다. Wiki 설치가 다른 제품의 권한을 추가하지 않는다. 미출시 제품의 MCP 주소를 추측해 등록하지 않는다.
+플러그인 `onidot@onidot`은 공통 스킬을 제공한다. Codex manifest의 `mcpServers`는 빈 목록이고 Claude 패키지는 MCP를 선언하지 않는다. 연결은 인스턴스마다 클라이언트 설정에 등록한다. `oni`가 제공되기 전의 수동 절차이며, 이 안내를 읽었다는 이유로 사용자 계정에 설치하거나 권한을 확대하지 않는다.
 
-## Codex
+### 준비와 공통 확인
 
-0.9.0부터 로컬 macOS/Linux Codex는 공유 OAuth helper로 갱신을 한 번만 수행한다. Node.js 24 이상과 `http_headers_helper`를 지원하는 Codex가 필요하다. 원격 실행 및 Windows에서는 이 helper 경로를 검증하지 않았다. 지원되지 않는 환경에서 설치·연결 성공을 주장하지 않는다. Claude와 GPT 웹의 계정 OAuth는 별개다.
+앱의 연결 설정에 표시된 `APP_URL`·`MCP_URL`을 그대로 입력한다. 아래 `<...>`는 사용자가 선택한 실제 값으로 바꿀 매개변수다. URL에 비밀값을 넣지 않는다. 별칭은 영문 소문자로 시작하고 영문 소문자·숫자·하이픈만 쓴다.
 
-1. `codex plugin add onidot@onidot`로 설치하고 출력의 installedPath를 확인한다. 아래 경로는 기본 Codex 캐시 기준이다. CODEX_HOME을 바꾸면 같은 위치를 사용한다.
-2. `node "${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.13.0/scripts/oauth-helper.mjs" login`으로 브라우저 OAuth를 시작한다. 인가 서버는 `https://app.onidot.dev`, 토큰 대상은 `https://mcp.onidot.dev`다. 사용자에게 승인받은 Workspace 범위만 선택한다.
-3. 같은 명령의 `login`을 `status`로 바꾸어 저장 상태를 확인한다. `headers`는 비밀 헤더를 출력하므로 진단용으로 실행하거나 출력 내용을 공유하지 않는다. 토큰은 private 런타임 파일에 저장되며 다른 클라이언트의 토큰을 복사하지 않는다.
-4. 이전 0.8.0 네이티브 OAuth가 있으면 새 helper 로그인과 실제 조회 검증 후 `codex mcp logout doraft-wiki`로 기존 로컬 인증만 제거한다. 옛 `doraft-wiki` 등록과 새 `onidot` 등록을 구분하며, 같은 클라이언트에서 옛 연결을 계속 사용하지 않는다. 서버의 다른 grant를 철회하지 않는다. 이후 새 작업에서 실제 `list_workspaces`와 페이지 조회를 확인한다.
-5. `OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED`는 갱신 응답 유실로 재사용을 막은 상태다. `login`을 다시 실행한다. 프로세스가 종료되면 SQLite 운영체제 잠금이 자동 해제된다. `OAUTH_REFRESH_LOCKED`는 다른 프로세스가 실행 중일 수 있으므로 잠금 파일을 삭제하지 않는다. `OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED`는 저장된 로그인이 옛 주소(`https://mcp.doraft.com/wiki`)용이라는 뜻이다. 옛 토큰은 보내지 않고 상태 파일도 바꾸지 않으므로 `login`을 다시 실행한다.
-6. 사용자가 서버 연결을 철회했거나 권한을 변경한 경우 자동 복구를 보장하지 않는다. Platform 연결 관리 `https://app.onidot.dev/settings/connections`에서 확인하고 필요하면 동일한 helper `login`으로 재인증한다. ALL은 이후 참여 Workspace도 포함한다. 권한 확대는 사용자 요청 없이 수행하지 않는다.
+```sh
+APP_URL='<앱 주소>'
+MCP_URL='<MCP 주소>'
+ALIAS='home'
+MCP_NAME="onidot-${ALIAS}"
+```
 
-Codex를 사용하는 클라이언트에는 같은 Wiki MCP를 독립 MCP 설정으로 중복 등록하지 않는다. 네이티브 연결 UI나 `codex mcp login`으로 별도 OAuth를 만들지 않는다.
+집 셀프호스팅은 `onidot-home`, 회사 로컬은 별도의 URL과 `ALIAS='work'`를 입력해 `onidot-work`로 등록하는 예시다. URL 기본값은 없다. 기대 결과는 서로 다른 이름·주소의 연결 두 개다. 이미 같은 주소의 연결이 있으면 중복 등록하지 않는다.
 
-### `invalid_target` 복구
+비밀값·OAuth 로그인·Space 선택과 READ/WRITE 승인은 **사람이 직접** 수행한다. AI 에이전트는 사용자가 요청한 연결의 공개 URL·별칭·명령만 준비하고, 로그인 화면이나 전체 인가 URL·토큰을 로그에 남기지 않는다.
 
-로그인 뒤 `invalid_target`이면 인증 요청의 `resource`가 현재 `https://mcp.onidot.dev`인지 확인한다. 이전 `https://labs.onidot.com/wiki`, `https://mcp.doraft.com/wiki` 또는 `https://api.doraft.com/mcp/wiki`를 요청하면 설치 캐시가 오래되었을 수 있다. 토큰·인가 코드·전체 인증 URL을 공유하지 않는다.
+### Codex 설정
 
-1. `codex plugin marketplace list --json`으로 `onidot`의 로컬 경로를 확인한다. 저장소를 옮겨 경로가 더 이상 존재하지 않으면 `codex plugin marketplace remove onidot` 후 `codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git`로 다시 등록한다. 경로가 유효한 git 마켓플레이스는 `codex plugin marketplace upgrade onidot`로 스냅샷을 먼저 갱신한다(`codex plugin add`만으로는 갱신되지 않아 이전 버전이 다시 설치된다). 로컬 개발에서는 `.agents/plugins/marketplace.json`이 있는 onidot-plugins 레포 루트를 지정한다.
-2. `codex plugin add onidot@onidot`로 최신 패키지를 다시 설치하고 출력의 version이 현재 버전인지 확인한다. 소스 저장소에서는 `npm run verify:codex`로 마켓플레이스 경로·설치 버전·설치 MCP 주소·운영 OAuth `resource`가 모두 같은지 검사한다. 검사가 실패하면 재인증만 반복하지 말고 표시된 불일치를 먼저 고친다.
-3. 위 공유 helper의 `login` 절차로 재연결하고 새 작업에서 실제 도구 호출을 확인한다.
+공통 플러그인 설치가 요청된 경우 다음 명령을 사용한다.
 
-## Claude
+```sh
+codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
+codex plugin add onidot@onidot
+```
 
-이 플러그인은 Claude에는 스킬만 제공하고 MCP 서버를 포함하지 않는다. Claude Code 로컬/데스크톱/웹, Claude Code 클라우드 세션 모두 같은 절차를 따른다.
+기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.14.0`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
 
-1. 이미 Wiki MCP가 연결되어 있는지 클라이언트의 커넥터/MCP 화면에서 확인한다. 플러그인 설치 사실만으로 MCP 연결이나 인증 성공을 주장하지 않는다.
-2. claude.ai 계정 설정의 사용자 지정 커넥터(custom connector)에 원격 MCP 주소 `https://mcp.onidot.dev`를 추가하고 브라우저 OAuth를 완료한다(인가 서버는 `https://app.onidot.dev`). 사용자는 onidot 로그인 후 Workspace와 읽기·쓰기 권한을 승인한다.
-3. Claude Code CLI는 claude.ai 구독으로 로그인한 세션에서만 이 커넥터를 불러온다. API 키 인증으로 Claude Code를 쓰는 경우 커넥터를 불러올 수 없으므로 클라이언트의 독립 MCP 설정에 `onidot` / `https://mcp.onidot.dev`를 등록하는 절차로 독립 MCP를 연결한다. 같은 클라이언트에 커넥터와 독립 MCP 설정 MCP를 동시에 등록하지 않는다.
-4. `list_workspaces`를 호출해 실제 접근을 확인한다. 목록이 비어 있으면 승인 Workspace와 현재 멤버십을 확인한다. Wiki 페이지 조회가 성공하기 전에는 문서 접근이 검증되었다고 하지 않는다.
-5. 실패하면 Platform 연결 관리 `https://app.onidot.dev/settings/connections`에서 해당 연결의 범위·만료·철회 여부를 확인한다. 범위 편집이 제공되면 새 Workspace를 기존 연결에 추가하고 저장한 뒤 실제 조회를 확인한다. ALL은 이후 참여 Workspace도 포함하고 SELECTED는 직접 추가한다. 권한 확대는 사용자 요청 없이 수행하지 않는다. 연결이 만료·철회됐거나 앱 요청 권한이 달라진 경우 클라이언트에서 재인증한다. 인증값을 채팅, 명령 인자, URL, 설정 파일에 복사하도록 요청하지 않는다.
+인스턴스는 플러그인과 별도로 등록한다.
 
-## CLI와 웹 연결
+```sh
+codex mcp add "$MCP_NAME" --url "$MCP_URL"
+codex mcp list
+# 사람이 직접 실행하고 브라우저에서 로그인·승인한다.
+codex mcp login "$MCP_NAME"
+```
 
-독립 MCP 설정은 독립 MCP 연결을 설정하는 대안이다. Codex 플러그인이나 Claude 커넥터를 이미 사용하는 클라이언트에는 같은 Wiki MCP를 중복 등록하지 않는다. 로컬 CLI에서 연결한 상태로 플러그인/커넥터 경로로 전환하면, 기존 연결의 로컬 설정을 먼저 제거하되 서버 권한 철회와 구분한다.
+같은 설정을 수동으로 만들려면 `${CODEX_HOME:-$HOME/.codex}/config.toml`의 해당 항목에 실제 URL을 넣는다. 두 방식 중 하나만 사용하고 기존 설정을 보존한다.
 
-이전 주소(`https://labs.onidot.com/wiki`, `https://mcp.doraft.com/wiki`, `https://api.doraft.com/mcp/wiki`, `https://api.doraft.com/mcp`)로 연결했다면 그 등록은 새 주소 `https://mcp.onidot.dev`에서 재사용되지 않는다. 옛 주소로 발급된 토큰은 새 주소에 보내거나 자동으로 옮기지 않는다. 새 주소로 다시 연결/재인증하고 실제 조회를 검증한 뒤 기존 로컬 등록을 제거한다.
+```toml
+[mcp_servers.onidot-home]
+url = "<집 인스턴스 MCP_URL>"
 
-Claude Desktop/웹, Claude Code 클라우드 세션, ChatGPT에서는 사용자 지정 커넥터 UI에 위 MCP URL을 넣고 OAuth를 완료한다. 커넥터로 연결하면 이 스킬과 `use-onidot`는 서버 리소스 `skill://doraft/<skill>/SKILL.md`로도 제공되므로 플러그인 설치 없이 도구와 스킬을 함께 사용한다. Claude Code 로컬처럼 플러그인(스킬)과 커넥터(MCP)를 같은 클라이언트에서 함께 쓰는 것은 중복이 아니다. 다만 같은 클라이언트에서 Wiki MCP를 커넥터·독립 MCP 설정·Codex 플러그인 중 두 경로로 중복 등록하지 않는다. 사용 중인 계정에 해당 UI가 없으면 그 제한을 보고하며 연결 완료로 표시하지 않는다. 브라우저 자동 열기가 실패하면 URL을 제공한다.
+[mcp_servers.onidot-work]
+url = "<회사 로컬 MCP_URL>"
+```
 
-PAT 직접 입력은 안전한 입력/환경 주입을 지원하는 CLI에서만 사용한다. Codex의 CLI PAT 모드는 실행 중인 자식 세션에만 유효하며 Codex 데스크톱이나 다음 세션까지 공유되지 않는다.
+기대 결과는 `codex mcp list`와 새 세션의 `/mcp`에 선택한 별칭이 표시되는 것이다. 로그인 성공 뒤에도 아래 실제 도구 검증을 수행한다.
 
-### 옛 주소에서 옮기기
+### 선택적 Codex 공유 OAuth helper
 
-옛 주소 `https://mcp.doraft.com/wiki`로 연결한 사용자는 새 연결을 먼저 만들고 검증한 뒤 옛 연결을 지운다.
+여러 로컬 세션의 일회용 refresh를 직렬화해야 한다면 Node.js 24 이상과 `http_headers_helper`를 지원하는 로컬 macOS/Linux Codex에서 패키지 helper를 사용할 수 있다. 네이티브 OAuth와 helper 중 하나만 해당 연결의 인증원으로 쓴다. 기존 네이티브 인증을 자동으로 지우지 않는다. Windows·원격 실행은 미검증이다.
 
-- Claude: 계정 설정의 사용자 지정 커넥터에 `https://mcp.onidot.dev`로 새 커넥터를 추가해 OAuth를 완료하고 `list_workspaces`로 확인한다. 확인한 뒤 은퇴한 주소를 사용하는 옛 **Doraft Wiki** 커넥터를 삭제한다. 같은 이름에 주소만 다른 커넥터를 남기지 않는다.
-- Codex: `codex plugin marketplace upgrade onidot` → `codex plugin add onidot@onidot`(출력의 version이 현재 버전인지 확인) → helper `login` 순서로 진행한다. `codex plugin add`만으로는 git 마켓플레이스 스냅샷이 갱신되지 않아 이전 버전이 다시 설치된다. 저장된 옛 로그인은 `OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED`로 거부되므로 `login`을 다시 실행한다.
-- GPT 웹: Claude와 같은 순서로 새 앱을 먼저 연결·검증하고 옛 앱을 지운다.
+```sh
+export ONIDOT_ALIAS="$ALIAS"
+export ONIDOT_APP_URL="$APP_URL"
+export ONIDOT_MCP_URL="$MCP_URL"
+# READ 연결이면 read scope만 요청한다. 승인 범위는 사람이 직접 선택한다.
+export ONIDOT_SCOPE='doraft:wiki:read offline_access'
+HELPER="${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.14.0/scripts/oauth-helper.mjs"
+# 사람이 직접 로그인한다. headers는 비밀 헤더를 출력하므로 진단용으로 실행하지 않는다.
+node "$HELPER" login
+node "$HELPER" status
+```
 
-## 서버 지침 bootstrap의 최초 설정과 한계
+WRITE가 승인된 연결의 scope는 `doraft:wiki:read doraft:wiki:write offline_access`다. helper를 연결에 쓸 때는 해당 `mcp_servers` 항목의 `http_headers_helper` 명령 안에 동일한 공개 `ONIDOT_ALIAS`·`ONIDOT_APP_URL`·`ONIDOT_MCP_URL`·`ONIDOT_SCOPE` 값을 명시한다. 새 프로세스가 위 셸의 export를 자동 상속한다고 가정하지 않는다.
 
-- Codex는 설치한 스킬과 인라인 MCP, Claude는 허용 계정의 원격 connector와 선택적 skills-only 패키지, ChatGPT는 계정 사용자 지정 앱 설정면을 사용한다. 제품/버전/계정에 따라 스킬·instructions·resource 자동 적용이 다르며 이 패키지는 전역 설정·시작/압축 hook을 자동 설치하지 않는다.
-- 이 계약을 지원하는 최초 설정 후 실제 세션에서 `list_workspaces` → `get_instruction_manifest` → `get_assistant_context` → 허용 쓰기 → checkpoint → 다른 세션 조회를 확인한다. 설치·인증·tools/list 성공만으로 실제 bootstrap 자동 호출이나 지침 준수를 검증했다고 말하지 않는다.
-- 서버 활성 지침 변경은 다음 manifest/context 조회로 전달하므로 매 변경마다 재설치하지 않는다. manifest 미지원 서버는 기존 수동 Wiki 기능만 호환하며 신규 assistant 연동은 미지원이다. 오류/권한 거부를 legacy fallback으로 우회하지 않는다.
-- 사용자 계정의 플러그인 설치·권한 확대·새 credential·OAuth grant·유료 모델 호출 전에 구체적인 대상·권한·비용을 보고한다. API 키를 찾거나 복사해 설정하지 않는다. 실 client 검증은 wire 가짜 client 테스트와 구별하고, 별도 설치나 모델 실행이 필요하면 그 단계만 미검증으로 남긴다.
+```toml
+[mcp_servers.onidot-home]
+url = "<MCP_URL>"
+http_headers_helper = 'ONIDOT_ALIAS=home ONIDOT_APP_URL="<APP_URL>" ONIDOT_MCP_URL="<MCP_URL>" ONIDOT_SCOPE="doraft:wiki:read offline_access" node "<설치 경로>/scripts/oauth-helper.mjs" headers'
+```
+
+기대 결과는 `status`의 `authenticated=true`다. helper는 연결 정보가 없으면 `ONIDOT_CONNECTION_REQUIRED`로 거부하고 기본 서버로 보내지 않는다. 별칭·앱·리소스·scope별로 새로운 로그인 상태와 잠금을 나누며 옛 helper의 토큰은 복사하지 않는다. `OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED`·`OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED`면 사람이 같은 연결로 다시 로그인한다. `OAUTH_REFRESH_LOCKED`면 다른 갱신이 끝나길 기다리고 잠금 파일을 삭제하지 않는다.
+
+### Claude Code 독립 연결
+
+```sh
+claude plugin marketplace add onidot-labs/onidot-plugins
+claude plugin install onidot@onidot --scope user
+claude mcp add --transport http --scope user "$MCP_NAME" "$MCP_URL"
+claude mcp get "$MCP_NAME"
+```
+
+기대 결과는 user scope의 HTTP 연결 이름·URL이 입력값과 일치하는 것이다. Claude Code의 `/mcp`에서 해당 연결을 선택해 **사람이 직접** OAuth 로그인한다. CLI가 `claude mcp login`을 지원하면 `claude mcp login "$MCP_NAME"`도 사용할 수 있다. 계정 커넥터가 같은 URL을 제공하면 독립 연결을 중복 등록하지 않는다. Claude Code 클라우드 세션의 네트워크와 설정 접근 가능 여부는 별도로 확인한다.
+
+### claude.ai 사용자 지정 커넥터
+
+1. 셀프호스팅 도메인의 정확한 `MCP_URL`이 Claude의 원격 네트워크에서 접근 가능한지 운영자가 확인한다. 클라우드 커넥터는 회사 PC의 localhost에 연결할 수 없다. 회사 로컬은 위 로컬 클라이언트 연결을 사용하며 이 태스크는 서버를 외부에 공개하지 않는다.
+2. claude.ai의 Customize → Connectors → Add custom connector에서 이름 `onidot-<ALIAS>`와 `MCP_URL`을 입력한다. 조직 계정은 해당 관리자의 추가 권한이 필요하다.
+3. **사람이 직접** OAuth 로그인·Space·연결 모드를 승인한다. 기대 결과는 선택한 별칭의 커넥터가 연결된 상태다. 웹에서 만든 계정 연결을 지원하는 Desktop·모바일에서도 사용한다.
+4. Claude Code가 claude.ai 구독 인증을 사용하면 `/mcp`에서 계정 커넥터를 확인한다. API 키·외부 제공자 인증으로 해당 커넥터를 불러온다고 가정하지 않는다. 같은 URL의 독립 MCP와 중복 등록하지 않는다.
+
+ChatGPT 계정 사용자 지정 앱도 선택한 인스턴스의 공개 MCP_URL과 OAuth로 연결한다. 계정 앱의 인증은 로컬 Codex 인증과 별개다. 제품·계정에 UI가 없다면 지원 제한을 보고한다.
+
+### 실제 연결 검증과 문제 해결
+
+각 연결에서 initialize의 `serverInfo.name=onidot`, 인스턴스 별칭·제공 방식·연결 모드(READ/WRITE)를 확인한다. `list_spaces`로 승인 범위를 조회하고, 반환된 Space의 허용 페이지에 `get_page`를 호출한다. READ 목록에는 쓰기 도구가 없어야 한다. 초기화 정체나 모드가 불명확하면 쓰기를 진행하지 않는다. WRITE의 실제 저장은 별도로 요청된 페이지에만 수행한다.
+
+`npm run verify:codex -- --alias "$ALIAS" --mcp-url "$MCP_URL"`는 설치 버전·별칭 등록 URL·해당 서버의 OAuth resource를 비교하는 읽기 전용 진단이다. 설치·인증·도구 노출·실제 조회는 각각 확인하며 진단 성공만으로 문서 작업 성공이라고 하지 않는다. `invalid_target`이면 resource, `invalid_scope`이면 실제 scope를 선택한 서버 메타데이터와 비교한다.
+
+옛 설치 이름 `doraft-wiki@doraft`와 이전 주소의 로그인은 새 연결에서 재사용되지 않는다. 사람이 다시 연결·인가하고 실제 조회를 검증한 뒤 해당 옛 로컬 등록만 제거한다. 다른 플러그인·서버 grant·문서는 삭제하지 않는다.
+
+## 서버 bootstrap과 원본
+
+실제 세션에서 `list_spaces` → `get_instruction_manifest` → `get_assistant_context`를 확인한다. 자동 호출 여부는 실제 클라이언트에서 검증한다. 서버 활성 지침 변경마다 플러그인을 재설치하지 않는다. manifest 미지원은 수동 호환 범위이고 권한 거부는 우회하지 않는다. OAuth grant·유료 모델 실행과 계정 설치는 별도 요청 범위에 따른다.
+
+배포 스킬 원본은 onidot-plugins의 `source/skills` 하나다. `plugins/`·`server-resources/`는 생성물이므로 직접 고치지 않는다. 서버는 고정 commit·SHA256을 검증해 반입한다. W1-22 서버 snapshot의 이름·연결·모드·업무 계약을 유지하고 클라이언트 등록 안내만 덧붙인다. 서버 저장소의 기존 snapshot 교체는 서버 소유자가 별도로 수행한다.
+
+공식 근거: [Codex MCP](https://developers.openai.com/codex/mcp), [Claude Code MCP](https://code.claude.com/docs/en/mcp), [Claude 원격 커넥터](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).

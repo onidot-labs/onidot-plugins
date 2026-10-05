@@ -24,7 +24,7 @@ test('이 저장소의 원본과 설치 카탈로그는 onidot Wiki만 포함한
 test('서버 반입 산출물의 해시는 실제 스킬 바이트와 일치한다',async()=>{
  const {createHash}=await import('node:crypto');
  const manifest=await json('server-resources/wiki/manifest.json');
- assert.equal(manifest.resource,'https://mcp.onidot.dev');
+ assert.equal('resource' in manifest,false);
  for(const [path,hash] of Object.entries(manifest.files))
   assert.equal(createHash('sha256').update(await readFile(new URL('server-resources/wiki/'+path,root))).digest('hex'),hash);
 });
@@ -47,23 +47,20 @@ test('같은 제품의 변형 이름과 제품 경로 탈출은 생성 전에 �
  }
 });
 
-test('mcpOrigin 누락·http·끝 슬래시와 endpoint 불일치는 생성 전에 거부한다',async()=>{
+test('패키지 catalog에 고정 issuer 또는 MCP origin을 다시 넣으면 거부한다',async()=>{
  const {mkdtemp,cp,writeFile,rm}=await import('node:fs/promises');
  const {tmpdir}=await import('node:os');
  const {join}=await import('node:path');
  const {spawnSync}=await import('node:child_process');
  const base=await json('source/products.json');
- const {mcpOrigin,...withoutOrigin}=base;
- const cases=[[withoutOrigin,/mcpOrigin/],[{...base,mcpOrigin:'http://labs.onidot.com'},/mcpOrigin/],[{...base,mcpOrigin:'https://labs.onidot.com/'},/mcpOrigin/],[{...base,mcpOrigin:'https://other.example'},/Canonical/]];
- for(const [catalog,pattern] of cases){
+ for(const patch of [{issuer:'https://app.example.invalid'},{mcpOrigin:'https://mcp.example.invalid'}]){
   const temp=await mkdtemp(join(tmpdir(),'onidot-plugin-test-'));
   try {
-   await cp(new URL('scripts/',root),join(temp,'scripts'),{recursive:true});
-   await cp(new URL('source/',root),join(temp,'source'),{recursive:true});
-   await writeFile(join(temp,'source/products.json'),JSON.stringify(catalog));
+   for(const path of ['scripts','source']) await cp(new URL(path+'/',root),join(temp,path),{recursive:true});
+   await writeFile(join(temp,'source/products.json'),JSON.stringify({...base,...patch}));
    const result=spawnSync(process.execPath,['scripts/generate.mjs'],{cwd:temp,encoding:'utf8'});
    assert.notEqual(result.status,0);
-   assert.match(result.stderr,pattern);
+   assert.match(result.stderr,/Invalid instance-bound catalog/);
   } finally {await rm(temp,{recursive:true,force:true});}
  }
 });
@@ -91,7 +88,7 @@ test('다른 onidot 제품과 planned 제품을 지원해도 Doraft 플러그인
   const catalog=await json('source/products.json');
   catalog.products=[catalog.products[0],{id:'sample',status:'released',source:'sample.json'},{id:'future',status:'planned'}];
   await writeFile(join(temp,'source/products.json'),JSON.stringify(catalog));
-  await writeFile(join(temp,'source/sample.json'),JSON.stringify({...await json('source/wiki.json'),name:'onidot-sample',endpoint:catalog.mcpOrigin+'/sample'}));
+  await writeFile(join(temp,'source/sample.json'),JSON.stringify({...await json('source/wiki.json'),name:'onidot-sample'}));
   const result=spawnSync(process.execPath,['scripts/generate.mjs'],{cwd:temp,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   const output=JSON.parse(await readFile(join(temp,'catalog.json'),'utf8'));

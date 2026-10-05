@@ -7,9 +7,10 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 execFileSync(process.execPath,['scripts/generate.mjs','--check'],{cwd:root,stdio:'inherit'});
 const catalog=JSON.parse(readFileSync(resolve(root,'catalog.json'),'utf8'));
 mkdirSync(resolve(root,'dist'),{recursive:true});
-// 이름 전환 후 옛 생성 ZIP을 배포 대상으로 남기지 않는다. 다른 제품은 보존한다.
+// Remove only obsolete generated archives of this plugin. Preserve other products.
 for(const name of readdirSync(resolve(root,'dist'))){
- if(/^doraft-wiki-\d+\.\d+\.\d+\.zip$/.test(name)) rmSync(resolve(root,'dist',name),{force:true});
+ const obsolete=catalog.products.some(p=>new RegExp(`^${p.name}-\\d+\\.\\d+\\.\\d+\\.zip$`).test(name) && name!==`${p.name}-${p.version}.zip`);
+ if(/^doraft-wiki-\d+\.\d+\.\d+\.zip$/.test(name) || obsolete) rmSync(resolve(root,'dist',name),{force:true});
 }
 const hashes=[];
 for(const product of catalog.products){

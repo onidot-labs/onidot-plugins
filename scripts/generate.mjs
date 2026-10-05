@@ -9,14 +9,7 @@ const json = value => JSON.stringify(value, null, 2) + '\n';
 const outputs = new Map();
 const codexEntries = [], claudeEntries = [], released = [];
 const ids = new Set(), names = new Set();
-if (catalog.schemaVersion !== 1 || catalog.issuer !== 'https://app.onidot.dev') throw Error('Unsupported catalog/issuer');
-assertMcpOrigin(catalog.mcpOrigin);
-function assertMcpOrigin(value) {
-  let url;
-  try { url = new URL(value); } catch { throw Error('Invalid mcpOrigin in source/products.json: absolute https origin required'); }
-  if (typeof value !== 'string' || url.protocol !== 'https:' || url.origin !== value || url.username || url.password)
-    throw Error('Invalid mcpOrigin in source/products.json: must be an https origin without path, trailing slash or credentials');
-}
+if (catalog.schemaVersion !== 1 || Object.hasOwn(catalog, 'issuer') || Object.hasOwn(catalog, 'mcpOrigin')) throw Error('Invalid instance-bound catalog');
 for (const product of catalog.products) {
   if (!/^[a-z][a-z0-9-]*$/.test(product.id) || ids.has(product.id)) throw Error('Invalid/duplicate product id');
   ids.add(product.id);
@@ -27,8 +20,7 @@ for (const product of catalog.products) {
   if (product.status !== 'released' || !/^[a-z][a-z0-9-]*\.json$/.test(product.source)) throw Error('Invalid product source');
   const app = JSON.parse(await readFile(resolve(root, 'source', product.source), 'utf8'));
   if (app.name !== (product.id === 'wiki' ? 'onidot' : `onidot-${product.id}`) || names.has(app.name)) throw Error('Invalid/duplicate plugin name');
-  const endpoint = product.id === 'wiki' ? catalog.mcpOrigin : `${catalog.mcpOrigin}/${product.id}`;
-  if (app.endpoint !== endpoint) throw Error(`Canonical product endpoint required: ${endpoint}`);
+  if (Object.hasOwn(app, 'endpoint') || Object.hasOwn(app, 'issuer')) throw Error('Invalid instance-bound product endpoint/issuer');
   if (!/^\d+\.\d+\.\d+$/.test(app.version) || !app.displayName || !app.skills?.length) throw Error('Incomplete released product');
   if (new Set(app.skills).size !== app.skills.length || app.skills.some(s => !/^[a-z][a-z0-9-]*$/.test(s))) throw Error('Invalid skills');
   names.add(app.name);
@@ -37,12 +29,11 @@ for (const product of catalog.products) {
     author: { name: 'onidot', url: 'https://onidot.com' }, homepage: app.guide,
     repository: catalog.repository, skills: './skills/' };
   outputs.set(`${base}/.codex-plugin/plugin.json`, json({ ...common,
-    mcpServers: { [app.name]: { type: 'http', url: app.endpoint,
-      http_headers_helper: `node "\${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/${app.name}/${app.version}/scripts/oauth-helper.mjs" headers` } },
+    // Connections are registered by alias in client config; the package never selects an instance.
+    mcpServers: {},
     interface: { displayName: app.displayName, shortDescription: app.shortDescription,
       longDescription: app.description, developerName: 'onidot', category: 'Productivity',
-      capabilities: ['Read', 'Write'], websiteURL: 'https://app.onidot.dev',
-      privacyPolicyURL: 'https://app.onidot.dev/privacy', termsOfServiceURL: 'https://app.onidot.dev/terms',
+      capabilities: ['Read', 'Write'], websiteURL: 'https://onidot.com',
       defaultPrompt: app.defaultPrompt } }));
   // Claude account connector owns MCP. A root .mcp.json would silently attach a second server in Code.
   outputs.set(`${base}/.claude-plugin/plugin.json`, json(common));
@@ -56,15 +47,15 @@ for (const product of catalog.products) {
   }
   outputs.set(`server-resources/${product.id}/manifest.json`, json({schemaVersion:1, product:product.id,
     name:app.name, displayName:app.displayName, version:app.version, repository:catalog.repository,
-    issuer:catalog.issuer, resource:app.endpoint, files:hashes}));
+    files:hashes}));
   codexEntries.push({name:app.name, source:{source:'local',path:`./${base}`},
     policy:{installation:'AVAILABLE',authentication:'ON_USE'},category:'Productivity'});
   claudeEntries.push({name:app.name,source:`./${base}`,version:app.version,description:app.description});
-  released.push({id:product.id,name:app.name,displayName:app.displayName,version:app.version,endpoint:app.endpoint});
+  released.push({id:product.id,name:app.name,displayName:app.displayName,version:app.version});
 }
 outputs.set('.agents/plugins/marketplace.json', json({name:'onidot',interface:{displayName:'onidot'},plugins:codexEntries}));
 outputs.set('.claude-plugin/marketplace.json', json({name:'onidot',owner:{name:'onidot'},metadata:{description:'onidot-studio AI 플러그인'},plugins:claudeEntries}));
-outputs.set('catalog.json',json({schemaVersion:1,issuer:catalog.issuer,repository:catalog.repository,products:released}));
+outputs.set('catalog.json',json({schemaVersion:1,repository:catalog.repository,products:released}));
 let different = false;
 const check = process.argv.includes('--check');
 // W5에서 이름이 바뀐 생성물만 정리한다. 설치된 사용자 캐시나 다른 제품은 건드리지 않는다.

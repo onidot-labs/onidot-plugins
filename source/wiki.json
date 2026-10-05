@@ -1,10 +1,9 @@
 {
   "name": "onidot",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "displayName": "onidot",
   "description": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
-  "endpoint": "https://mcp.onidot.dev",
-  "guide": "https://app.onidot.dev/settings/connections",
+  "guide": "https://onidot.com",
   "skills": [
     "setup-onidot",
     "use-onidot"

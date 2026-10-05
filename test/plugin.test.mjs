@@ -10,14 +10,14 @@ const listDirs = async (path) => (await readdir(new URL(path, root), { withFileT
 const frontmatter = (markdown, key) => markdown.replace(/^---\n/, '').split('\n---')[0].split('\n').find((line) => line.startsWith(`${key}:`))?.slice(key.length + 1).trim() ?? '';
 const SERVER_SKILLS = 'server-resources/wiki/skills/';
 
-test('Claude 플러그인은 원격 MCP를 선언하지 않는다: Claude는 claude.ai 커넥터로만 Wiki MCP를 받는다(이슈 #223)', async () => {
+test('Claude 플러그인은 스킬만 제공하고 MCP는 계정 커넥터 또는 독립 설정에서 받는다', async () => {
   const dest = fileURLToPath(new URL('plugins/onidot/.mcp.json', root));
   await assert.rejects(readFile(dest), { code: 'ENOENT' });
   const claude = await readJson('plugins/onidot/.claude-plugin/plugin.json');
   assert.equal('mcpServers' in claude, false);
 });
 
-test('Codex와 Claude manifest는 같은 앱과 스킬을 제공하되 MCP는 Codex만 인라인으로 선언한다', async () => {
+test('Codex와 Claude manifest는 같은 앱과 스킬을 제공하되 MCP는 연결별로 외부 등록한다', async () => {
   const source = await readJson('source/wiki.json');
   const pkg = await readJson('package.json');
   const codex = await readJson('plugins/onidot/.codex-plugin/plugin.json');
@@ -30,8 +30,7 @@ test('Codex와 Claude manifest는 같은 앱과 스킬을 제공하되 MCP는 Co
     assert.deepEqual(await listDirs(`plugins/onidot/${manifest.skills}`), [...source.skills].sort());
     assert.equal(manifest.repository, 'https://github.com/onidot-labs/onidot-plugins');
   }
-  assert.equal(codex.mcpServers['onidot'].url, source.endpoint);
-  assert.match(codex.mcpServers['onidot'].http_headers_helper, /oauth-helper\.mjs.*headers/);
+  assert.deepEqual(codex.mcpServers, {});
   assert.equal(await readText('plugins/onidot/scripts/oauth-helper.mjs'), await readText('source/runtime/oauth-helper.mjs'));
   assert.deepEqual(codex.interface.capabilities, ['Read', 'Write']);
 });
@@ -85,7 +84,7 @@ test('저장소 루트 카탈로그는 GitHub 마켓플레이스 추가에서 �
 
 test('Wiki 스킬은 현재 초안·발행 및 권한 경계를 안내한다', async () => {
   const skill = await readFile(new URL('plugins/onidot/skills/use-onidot/SKILL.md', root), 'utf8');
-  for (const required of ['list_workspaces', 'get_page_draft', 'update_page_draft', 'publish_page', 'preview_page_change', 'draftVersion', 'Tasks', 'search_knowledge', 'grep_pages', 'read_page_excerpt', 'includeContent=false', 'incomplete', 'revisionId', '같은 H1으로 시작하지 않는다']) {
+  for (const required of ['list_spaces', 'get_page_draft', 'update_page_draft', 'publish_page', 'preview_page_change', 'draftVersion', 'Tasks', 'search_knowledge', 'grep_pages', 'read_page_excerpt', 'includeContent=false', 'incomplete', 'revisionId', '같은 H1으로 시작하지 않는다']) {
     assert.ok(skill.includes(required), required);
   }
   assert.ok(!skill.includes('createWikiPage'));
@@ -110,14 +109,14 @@ test('Wiki 스킬은 키워드 관련성 검색의 정렬·호환 계약을 안�
 
 test('연결 스킬은 커넥터 경로에서 서버 스킬 리소스를 안내하고 중복 등록을 막는다', async () => {
   const skill = await readText('plugins/onidot/skills/setup-onidot/SKILL.md');
-  for (const required of ['https://mcp.onidot.dev', 'list_workspaces', '사용자 지정 커넥터', 'skill://doraft/<skill>/SKILL.md', 'Claude Code 클라우드', '중복 등록하지 않는다']) {
+  for (const required of ['MCP_URL', 'list_spaces', '사용자 지정 커넥터', 'skill://onidot/use-onidot/SKILL.md', 'Claude Code 클라우드', '중복 등록하지 않는다']) {
     assert.ok(skill.includes(required), required);
   }
 });
 
 test('연결 스킬은 옛 MCP 주소로 연결한 기존 등록을 자동 이전 대신 재연결 대상으로 안내한다', async () => {
   const skill = await readText('plugins/onidot/skills/setup-onidot/SKILL.md');
-  for (const required of ['https://api.doraft.com/mcp/wiki', 'https://api.doraft.com/mcp', '재사용되지 않는다', '다시 연결']) {
+  for (const required of ['이전 주소', '재사용되지 않는다', '다시 연결']) {
     assert.ok(skill.includes(required), required);
   }
 });
@@ -132,7 +131,7 @@ test('일반 작성 요청은 페이지 저장을 기본으로 하고 초안 보
   }
 });
 
-test('Wiki 스킬은 제거된 Markdown 가져오기를 안내하지 않고 내보내기를 Workspace 소유자 전용으로 안내한다(옛 서버 #334)', async () => {
+test('Wiki 스킬은 제거된 Markdown 가져오기를 안내하지 않고 내보내기를 Space 소유자 전용으로 안내한다(옛 서버 #334)', async () => {
   const source = await readJson('source/wiki.json');
   for (const skill of source.skills) {
     const markdown = await readText(`source/skills/${skill}/SKILL.md`);
@@ -141,7 +140,7 @@ test('Wiki 스킬은 제거된 Markdown 가져오기를 안내하지 않고 내�
     }
   }
   const skill = await readText('plugins/onidot/skills/use-onidot/SKILL.md');
-  for (const required of ['가져오기 MCP 도구는 없다', '본문 전체를 바꾸는 요청은 위 `save_page` 전체 교체 절차', 'create_markdown_export', 'get_export_status', 'Workspace 소유자', 'scope="WORKSPACE"', '페이지 첨부는 빠지고', 'includeDrafts=true', 'excludedPageAttachmentCount', 'excludedUnpublishedCount', 'job ID']) {
+  for (const required of ['가져오기 MCP 도구는 없다', '본문 전체를 바꾸는 요청은 위 `save_page` 전체 교체 절차', 'create_markdown_export', 'get_export_status', 'Space 소유자', 'scope="SPACE"', '페이지 첨부는 빠지고', 'includeDrafts=true', 'excludedPageAttachmentCount', 'excludedUnpublishedCount', 'job ID']) {
     assert.ok(skill.includes(required), required);
   }
 });
@@ -196,7 +195,7 @@ test('설치 안내의 Codex 캐시 경로는 현재 제품 버전을 가리킨�
 
 test('연결 스킬은 옛 주소 재연결·전용 오류 코드·마켓플레이스 갱신을 안내한다', async () => {
   const skill = await readText('plugins/onidot/skills/setup-onidot/SKILL.md');
-  for (const required of ['https://mcp.doraft.com/wiki', 'OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED', 'codex plugin marketplace upgrade onidot']) {
+  for (const required of ['이전 주소', 'OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED', 'codex plugin marketplace upgrade onidot']) {
     assert.ok(skill.includes(required), required);
   }
 });

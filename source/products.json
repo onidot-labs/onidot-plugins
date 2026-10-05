@@ -1,7 +1,5 @@
 {
   "schemaVersion": 1,
-  "issuer": "https://app.onidot.dev",
-  "mcpOrigin": "https://mcp.onidot.dev",
   "repository": "https://github.com/onidot-labs/onidot-plugins",
   "products": [
     {

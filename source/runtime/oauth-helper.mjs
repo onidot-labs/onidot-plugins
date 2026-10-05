@@ -6,12 +6,34 @@ import {createServer} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 
-export const config=Object.freeze({issuer:'https://app.onidot.dev',resource:'https://mcp.onidot.dev',scope:'doraft:wiki:read doraft:wiki:write offline_access'});
 const failure=code=>new Error(code);
+export function connectionConfig(env=process.env){
+ if(!env.ONIDOT_APP_URL || !env.ONIDOT_MCP_URL || !env.ONIDOT_ALIAS)throw failure('ONIDOT_CONNECTION_REQUIRED');
+ if(!/^[a-z][a-z0-9-]{0,63}$/.test(env.ONIDOT_ALIAS))throw failure('INVALID_ONIDOT_ALIAS');
+ function address(value,originOnly=false){
+  let url;try{url=new URL(value);}catch{throw failure('INVALID_ONIDOT_URL');}
+  const loopback=['localhost','127.0.0.1','[::1]'].includes(url.hostname);
+  if((url.protocol!=='https:' && !(url.protocol==='http:' && loopback)) || url.username || url.password || url.search || url.hash || (originOnly && url.pathname!=='/'))throw failure('INVALID_ONIDOT_URL');
+  return originOnly?url.origin:value;
+ }
+ const scope=env.ONIDOT_SCOPE || 'doraft:wiki:read offline_access';
+ const scopes=scope.split(' ');
+ if(!scopes.includes('doraft:wiki:read') || scopes.some(s=>!['doraft:wiki:read','doraft:wiki:write','offline_access'].includes(s)))throw failure('INVALID_ONIDOT_SCOPE');
+ return Object.freeze({issuer:address(env.ONIDOT_APP_URL,true),resource:address(env.ONIDOT_MCP_URL),alias:env.ONIDOT_ALIAS,scope});
+}
+// Read lazily so missing connection parameters never select a default instance.
+export const config=Object.freeze({
+ get issuer(){return connectionConfig().issuer;},
+ get resource(){return connectionConfig().resource;},
+ get scope(){return connectionConfig().scope;},
+});
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
-// 전환 호환 계약: 기존 로그인·갱신 잠금의 저장 경로와 DORAFT_LOGIN_REQUIRED 코드는 유지한다.
-// 경로를 바꾸면 이전 helper와 별개 잠금으로 같은 refresh token을 갱신할 수 있다.
-const stateRoot=()=>resolve(process.env.CODEX_HOME || resolve(homedir(),'.codex'),'doraft-oauth','wiki');
+// New grants only: never copy tokens from the retired helper or between connections.
+export function stateDirectory(home=process.env.CODEX_HOME || resolve(homedir(),'.codex'),connection=connectionConfig()){
+ const identity=createHash('sha256').update(JSON.stringify([connection.alias,connection.issuer,connection.resource,connection.scope])).digest('hex');
+ return resolve(home,'onidot-oauth',identity);
+}
+const stateRoot=()=>stateDirectory();
 async function privatePath(path,directory=false){
  const s=await lstat(path);
  if(s.isSymbolicLink() || (directory?!s.isDirectory():!s.isFile()) || (typeof process.getuid==='function' && (s.uid!==process.getuid() || (s.mode&0o077)!==0))) throw failure('UNSAFE_OAUTH_STATE_PERMISSIONS');
@@ -29,7 +51,7 @@ export async function writeState(dir,value){
 async function readState(dir){
  const path=resolve(dir,'tokens.json');
  try{await privatePath(path);const raw=await readFile(path,'utf8');try{return JSON.parse(raw);}catch{throw failure('INVALID_OAUTH_STATE');}}
- catch(e){if(e.code==='ENOENT')throw failure('DORAFT_LOGIN_REQUIRED');throw e;}
+ catch(e){if(e.code==='ENOENT')throw failure('ONIDOT_LOGIN_REQUIRED');throw e;}
 }
 // SQLite owns the OS lock; process death releases it without deleting another owner's lock.
 // The database contains no credentials. Token intent and results are durable atomic files.
@@ -51,8 +73,7 @@ function validToken(value){return typeof value==='string' && value.length>=16 &&
 function validateState(s){
  if(s.schema!==1)throw failure('INVALID_OAUTH_STATE');
  // 옛 주소로 저장된 상태는 손상이 아니다. 토큰을 보내지 않고 상태 파일도 건드리지 않은 채 재로그인을 요구한다.
- if(s.resource!==config.resource || s.issuer==='https://api.doraft.com')throw failure('OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED');
- if(s.issuer!==config.issuer)throw failure('INVALID_OAUTH_STATE');
+ if(s.resource!==config.resource || s.issuer!==config.issuer)throw failure('OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED');
  if(typeof s.clientId!=='string' || !s.clientId || !validToken(s.accessToken) || !validToken(s.refreshToken) || !Number.isFinite(s.expiresAt))throw failure('INVALID_OAUTH_STATE');
  if(s.pendingRefresh)throw failure('OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED');
 }
@@ -70,6 +91,7 @@ async function post(path,body,json=false){
 }
 const refresh=s=>post('/oauth2/token',{grant_type:'refresh_token',client_id:s.clientId,refresh_token:s.refreshToken,resource:config.resource});
 export async function getHeaders({dir=stateRoot(),requestTokens=refresh,waitMs}={}){
+ connectionConfig();
  return withLock(dir,async()=>{
   const state=await readState(dir);validateState(state);
   if(state.expiresAt>Date.now()+30000)return {Authorization:`Bearer ${state.accessToken}`};
@@ -81,6 +103,7 @@ export async function getHeaders({dir=stateRoot(),requestTokens=refresh,waitMs}=
  },{waitMs});
 }
 export async function login({dir=stateRoot()}={}){
+ connectionConfig();
  return withLock(dir,async()=>{
   const verifier=randomBytes(32).toString('base64url');
   const state=randomBytes(32).toString('base64url');
@@ -113,6 +136,7 @@ export async function login({dir=stateRoot()}={}){
  });
 }
 async function main(){
+ connectionConfig();
  const mode=process.argv[2]??'headers';
  if(mode==='headers')process.stdout.write(JSON.stringify(await getHeaders())+'\n');
  else if(mode==='login')await login();
@@ -121,4 +145,4 @@ async function main(){
   catch(e){process.stdout.write(JSON.stringify({authenticated:false,error:/^[A-Z0-9_]+$/.test(e.message)?e.message:'OAUTH_LOCAL_ERROR'})+'\n');process.exitCode=1;}
  }else throw failure('Usage: oauth-helper.mjs headers|login|status');
 }
-if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{process.stderr.write(`onidot OAuth: ${error.code==='ENOENT'?'DORAFT_LOGIN_REQUIRED':/^[A-Z0-9_]+$/.test(error.message)?error.message:'OAUTH_LOCAL_ERROR'}\n`);process.exitCode=1;});
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{process.stderr.write(`onidot OAuth: ${error.code==='ENOENT'?'ONIDOT_LOGIN_REQUIRED':/^[A-Z0-9_]+$/.test(error.message)?error.message:'OAUTH_LOCAL_ERROR'}\n`);process.exitCode=1;});
