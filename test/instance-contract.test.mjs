@@ -28,7 +28,7 @@ test('서버 W1-22 승인 스킬 snapshot과 업무 계약이 일치한다', asy
   const setup = await read('source/skills/setup-onidot/SKILL.md');
   const server = setup.slice(0, setup.indexOf('\n## 클라이언트별 수동 등록'));
   // S1(onidot-studio Wiki 0rv6m4w3zs92z): scope 안내 한 줄이 onidot:wiki:*로 바뀐 서버 스냅샷.
-  assert.equal(hash(server), 'e6e7c3d553065b481c783784f86d1ce519764c6862ba11b2b78972aee43a9e72');
+  assert.equal(hash(server), '5f0d6b9fad614a5d8239851252fc119f0719e8609b40afd368b1ed7d572d0fe3');
 });
 
 test('명시하지 않은 권한은 READ이며 별칭·주소·scope별로 OAuth 상태를 분리한다', () => {

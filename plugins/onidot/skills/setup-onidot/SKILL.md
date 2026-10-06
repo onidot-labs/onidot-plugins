@@ -18,7 +18,7 @@ onidot 플러그인은 인스턴스 주소를 고정하지 않는다. 연결마�
 ## 전환과 오류 확인
 
 - 옛 `dft_` 토큰은 받지 않는다. 전환 후 선택한 인스턴스로 다시 인가한다. 새 PAT/access/refresh 접두어는 `oni_pat_`·`oni_at_`·`oni_rt_`다. 토큰 내용을 출력하지 않는다.
-- OAuth scope는 `onidot:wiki:read`·`onidot:wiki:write`·`offline_access`다. 옛 이름 `doraft:wiki:*`로 요청해도 서버가 같은 scope로 받으므로 기존 연결을 그 이유로 다시 인가하지 않는다. 새 연결과 설정에는 새 이름을 쓴다.
+- OAuth scope는 `onidot:wiki:read`·`onidot:wiki:write`·`offline_access`다. 서버는 옛 이름 `doraft:wiki:*`로 한 요청도 같은 scope로 받는다. 새 연결과 설정에는 새 이름을 쓴다.
 - `invalid_target`·`invalid_scope`이면 실제 연결의 client/app, resource, 요청 scope와 선택한 서버의 메타데이터를 비교한다. 로컬 플러그인과 클라우드 커넥터의 인증을 같은 것으로 취급하지 않는다.
 - 401은 다시 로그인하고, 403은 승인 범위와 현재 Space/페이지 권한을 확인한다. 404는 새 세션 초기화 또는 현재 페이지 권한을 확인한다. 같은 사용자라도 연결별 승인 범위를 다시 조회한다.
 - 문서 작업은 `skill://onidot/use-onidot/SKILL.md`를 따른다. 특정 MCP 등록 이름을 작업 스킬에 고정하지 않는다.
@@ -98,7 +98,7 @@ url = "<MCP_URL>"
 http_headers_helper = 'ONIDOT_ALIAS=home ONIDOT_APP_URL="<APP_URL>" ONIDOT_MCP_URL="<MCP_URL>" ONIDOT_SCOPE="onidot:wiki:read offline_access" node "<설치 경로>/scripts/oauth-helper.mjs" headers'
 ```
 
-기대 결과는 `status`의 `authenticated=true`다. helper는 연결 정보가 없으면 `ONIDOT_CONNECTION_REQUIRED`로 거부하고 기본 서버로 보내지 않는다. 별칭·앱·리소스·scope별로 새로운 로그인 상태와 잠금을 나누며 옛 helper의 토큰은 복사하지 않는다. scope의 옛 이름과 새 이름은 같은 권한이므로 같은 로그인 상태를 쓴다. 기존 `ONIDOT_SCOPE`의 옛 이름을 새 이름으로 바꿔도 다시 로그인하지 않는다. `OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED`·`OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED`면 사람이 같은 연결로 다시 로그인한다. `OAUTH_REFRESH_LOCKED`면 다른 갱신이 끝나길 기다리고 잠금 파일을 삭제하지 않는다. 서버가 scope를 새 이름으로 내기 시작한 뒤 0.14.0 이하 helper는 갱신 응답을 `INVALID_OAUTH_TOKEN_RESPONSE`로 거부한다. 플러그인을 갱신하고 `http_headers_helper`의 설치 경로를 새 버전으로 바꾼 뒤 사람이 `login`을 다시 실행한다.
+기대 결과는 `status`의 `authenticated=true`다. helper는 연결 정보가 없으면 `ONIDOT_CONNECTION_REQUIRED`로 거부하고 기본 서버로 보내지 않는다. 별칭·앱·리소스·scope별로 새로운 로그인 상태와 잠금을 나누며 옛 helper의 토큰은 복사하지 않는다. scope의 옛 이름과 새 이름은 같은 권한이므로 같은 로그인 상태를 쓴다. 기존 `ONIDOT_SCOPE`의 옛 이름을 새 이름으로 바꿔도 다시 로그인하지 않는다. `OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED`·`OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED`면 사람이 같은 연결로 다시 로그인한다. `OAUTH_REFRESH_LOCKED`면 다른 갱신이 끝나길 기다리고 잠금 파일을 삭제하지 않는다. 0.14.0 이하 helper는 새 scope 이름의 갱신 응답을 `INVALID_OAUTH_TOKEN_RESPONSE`로 거부한다. 새 이름을 내는 서버를 쓰기 전에 플러그인을 갱신하고 `http_headers_helper`의 설치 경로를 바꾼다. 로그인 상태는 그대로 쓴다. 이미 거부됐으면 사람이 `login`을 다시 실행한다.
 
 ### Claude Code 독립 연결
 
