@@ -1,14 +1,14 @@
 {
-  "name": "doraft",
+  "name": "onidot",
   "interface": {
-    "displayName": "Doraft"
+    "displayName": "onidot"
   },
   "plugins": [
     {
-      "name": "doraft-wiki",
+      "name": "onidot",
       "source": {
         "source": "local",
-        "path": "./plugins/doraft-wiki"
+        "path": "./plugins/onidot"
       },
       "policy": {
         "installation": "AVAILABLE",

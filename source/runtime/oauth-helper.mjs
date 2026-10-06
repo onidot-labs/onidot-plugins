@@ -6,10 +6,34 @@ import {createServer} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 
-export const config=Object.freeze({issuer:'https://api.doraft.com',resource:'https://labs.onidot.com/wiki',scope:'doraft:wiki:read doraft:wiki:write offline_access'});
 const failure=code=>new Error(code);
+export function connectionConfig(env=process.env){
+ if(!env.ONIDOT_APP_URL || !env.ONIDOT_MCP_URL || !env.ONIDOT_ALIAS)throw failure('ONIDOT_CONNECTION_REQUIRED');
+ if(!/^[a-z][a-z0-9-]{0,63}$/.test(env.ONIDOT_ALIAS))throw failure('INVALID_ONIDOT_ALIAS');
+ function address(value,originOnly=false){
+  let url;try{url=new URL(value);}catch{throw failure('INVALID_ONIDOT_URL');}
+  const loopback=['localhost','127.0.0.1','[::1]'].includes(url.hostname);
+  if((url.protocol!=='https:' && !(url.protocol==='http:' && loopback)) || url.username || url.password || url.search || url.hash || (originOnly && url.pathname!=='/'))throw failure('INVALID_ONIDOT_URL');
+  return originOnly?url.origin:value;
+ }
+ const scope=env.ONIDOT_SCOPE || 'doraft:wiki:read offline_access';
+ const scopes=scope.split(' ');
+ if(!scopes.includes('doraft:wiki:read') || scopes.some(s=>!['doraft:wiki:read','doraft:wiki:write','offline_access'].includes(s)))throw failure('INVALID_ONIDOT_SCOPE');
+ return Object.freeze({issuer:address(env.ONIDOT_APP_URL,true),resource:address(env.ONIDOT_MCP_URL),alias:env.ONIDOT_ALIAS,scope});
+}
+// Read lazily so missing connection parameters never select a default instance.
+export const config=Object.freeze({
+ get issuer(){return connectionConfig().issuer;},
+ get resource(){return connectionConfig().resource;},
+ get scope(){return connectionConfig().scope;},
+});
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
-const stateRoot=()=>resolve(process.env.CODEX_HOME || resolve(homedir(),'.codex'),'doraft-oauth','wiki');
+// New grants only: never copy tokens from the retired helper or between connections.
+export function stateDirectory(home=process.env.CODEX_HOME || resolve(homedir(),'.codex'),connection=connectionConfig()){
+ const identity=createHash('sha256').update(JSON.stringify([connection.alias,connection.issuer,connection.resource,connection.scope])).digest('hex');
+ return resolve(home,'onidot-oauth',identity);
+}
+const stateRoot=()=>stateDirectory();
 async function privatePath(path,directory=false){
  const s=await lstat(path);
  if(s.isSymbolicLink() || (directory?!s.isDirectory():!s.isFile()) || (typeof process.getuid==='function' && (s.uid!==process.getuid() || (s.mode&0o077)!==0))) throw failure('UNSAFE_OAUTH_STATE_PERMISSIONS');
@@ -27,7 +51,7 @@ export async function writeState(dir,value){
 async function readState(dir){
  const path=resolve(dir,'tokens.json');
  try{await privatePath(path);const raw=await readFile(path,'utf8');try{return JSON.parse(raw);}catch{throw failure('INVALID_OAUTH_STATE');}}
- catch(e){if(e.code==='ENOENT')throw failure('DORAFT_LOGIN_REQUIRED');throw e;}
+ catch(e){if(e.code==='ENOENT')throw failure('ONIDOT_LOGIN_REQUIRED');throw e;}
 }
 // SQLite owns the OS lock; process death releases it without deleting another owner's lock.
 // The database contains no credentials. Token intent and results are durable atomic files.
@@ -47,9 +71,9 @@ export async function withLock(dir,fn,{waitMs=30000}={}){
 }
 function validToken(value){return typeof value==='string' && value.length>=16 && value.length<=4096 && !/\s/.test(value);}
 function validateState(s){
- if(s.schema!==1 || s.issuer!==config.issuer)throw failure('INVALID_OAUTH_STATE');
+ if(s.schema!==1)throw failure('INVALID_OAUTH_STATE');
  // 옛 주소로 저장된 상태는 손상이 아니다. 토큰을 보내지 않고 상태 파일도 건드리지 않은 채 재로그인을 요구한다.
- if(s.resource!==config.resource)throw failure('OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED');
+ if(s.resource!==config.resource || s.issuer!==config.issuer)throw failure('OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED');
  if(typeof s.clientId!=='string' || !s.clientId || !validToken(s.accessToken) || !validToken(s.refreshToken) || !Number.isFinite(s.expiresAt))throw failure('INVALID_OAUTH_STATE');
  if(s.pendingRefresh)throw failure('OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED');
 }
@@ -67,6 +91,7 @@ async function post(path,body,json=false){
 }
 const refresh=s=>post('/oauth2/token',{grant_type:'refresh_token',client_id:s.clientId,refresh_token:s.refreshToken,resource:config.resource});
 export async function getHeaders({dir=stateRoot(),requestTokens=refresh,waitMs}={}){
+ connectionConfig();
  return withLock(dir,async()=>{
   const state=await readState(dir);validateState(state);
   if(state.expiresAt>Date.now()+30000)return {Authorization:`Bearer ${state.accessToken}`};
@@ -78,6 +103,7 @@ export async function getHeaders({dir=stateRoot(),requestTokens=refresh,waitMs}=
  },{waitMs});
 }
 export async function login({dir=stateRoot()}={}){
+ connectionConfig();
  return withLock(dir,async()=>{
   const verifier=randomBytes(32).toString('base64url');
   const state=randomBytes(32).toString('base64url');
@@ -91,25 +117,26 @@ export async function login({dir=stateRoot()}={}){
    if(req.method!=='GET' || url.pathname!=='/callback' || !stateMatches || url.searchParams.get('iss')!==config.issuer || consumed){res.writeHead(400);res.end('Invalid OAuth callback');return;}
    consumed=true;
    if(url.searchParams.has('error') || !url.searchParams.get('code')){res.writeHead(400);res.end('OAuth denied');rejectLogin(failure('OAUTH_LOGIN_DENIED'));return;}
-   res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});res.end('Doraft Wiki login received. Return to Codex.');finish(url.searchParams.get('code'));
+   res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});res.end('onidot login received. Return to Codex.');finish(url.searchParams.get('code'));
   });
   await new Promise((res,rej)=>{server.once('error',rej);server.listen(0,'127.0.0.1',res);});
   const timer=setTimeout(()=>rejectLogin(failure('OAUTH_LOGIN_TIMEOUT')),300000);
   try{
    const redirect=`http://127.0.0.1:${server.address().port}/callback`;
-   const client=await post('/oauth2/register',{client_name:'Doraft Wiki',redirect_uris:[redirect],token_endpoint_auth_method:'none',grant_types:['authorization_code','refresh_token'],response_types:['code']},true);
+   const client=await post('/oauth2/register',{client_name:'onidot',redirect_uris:[redirect],token_endpoint_auth_method:'none',grant_types:['authorization_code','refresh_token'],response_types:['code']},true);
    if(typeof client.client_id!=='string' || !client.client_id)throw failure('INVALID_OAUTH_CLIENT');
    const url=new URL(config.issuer+'/oauth2/authorize');
    url.search=new URLSearchParams({response_type:'code',client_id:client.client_id,redirect_uri:redirect,scope:config.scope,resource:config.resource,state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
-   process.stderr.write(`Open this Doraft login URL in your browser:\n${url}\n`);
+   process.stderr.write(`Open this onidot login URL in your browser:\n${url}\n`);
    const code=await callback;const started=Date.now();
    const result=await post('/oauth2/token',{grant_type:'authorization_code',client_id:client.client_id,code,redirect_uri:redirect,code_verifier:verifier,resource:config.resource});
    await writeState(dir,nextState({clientId:client.client_id},result,started));
-   process.stderr.write('Doraft Wiki shared OAuth login complete.\n');
+   process.stderr.write('onidot shared OAuth login complete.\n');
   }finally{clearTimeout(timer);server.close();}
  });
 }
 async function main(){
+ connectionConfig();
  const mode=process.argv[2]??'headers';
  if(mode==='headers')process.stdout.write(JSON.stringify(await getHeaders())+'\n');
  else if(mode==='login')await login();
@@ -118,4 +145,4 @@ async function main(){
   catch(e){process.stdout.write(JSON.stringify({authenticated:false,error:/^[A-Z0-9_]+$/.test(e.message)?e.message:'OAUTH_LOCAL_ERROR'})+'\n');process.exitCode=1;}
  }else throw failure('Usage: oauth-helper.mjs headers|login|status');
 }
-if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{process.stderr.write(`Doraft OAuth: ${error.code==='ENOENT'?'DORAFT_LOGIN_REQUIRED':/^[A-Z0-9_]+$/.test(error.message)?error.message:'OAUTH_LOCAL_ERROR'}\n`);process.exitCode=1;});
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{process.stderr.write(`onidot OAuth: ${error.code==='ENOENT'?'ONIDOT_LOGIN_REQUIRED':/^[A-Z0-9_]+$/.test(error.message)?error.message:'OAUTH_LOCAL_ERROR'}\n`);process.exitCode=1;});

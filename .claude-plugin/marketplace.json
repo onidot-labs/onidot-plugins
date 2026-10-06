@@ -1,17 +1,17 @@
 {
-  "name": "doraft",
+  "name": "onidot",
   "owner": {
-    "name": "Doraft"
+    "name": "onidot"
   },
   "metadata": {
-    "description": "Doraft 제품별 AI 플러그인"
+    "description": "onidot-studio AI 플러그인"
   },
   "plugins": [
     {
-      "name": "doraft-wiki",
-      "source": "./plugins/doraft-wiki",
-      "version": "0.13.0",
-      "description": "Doraft Wiki 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다."
+      "name": "onidot",
+      "source": "./plugins/onidot",
+      "version": "0.14.0",
+      "description": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다."
     }
   ]
 }

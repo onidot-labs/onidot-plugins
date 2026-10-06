@@ -6,11 +6,11 @@ import {join} from 'node:path';
 import {createServer} from 'node:http';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {config,getHeaders,writeState} from '../source/runtime/oauth-helper.mjs';
+import {config,getHeaders,writeState,stateDirectory} from './oauth-fixture.mjs';
 const run=promisify(execFile), moduleUrl=new URL('../source/runtime/oauth-helper.mjs',import.meta.url).href;
 const original={schema:1,issuer:config.issuer,resource:config.resource,clientId:'test-client',accessToken:'fake-old-access-123456789',refreshToken:'fake-refresh-123456789',expiresAt:0,pendingRefresh:false};
 const response={access_token:'fake-new-access-123456789',refresh_token:'fake-new-refresh-123456789',expires_in:900,token_type:'Bearer',scope:config.scope};
-async function fixture(fn){const dir=await mkdtemp(join(tmpdir(),'doraft-oauth-test-'));try{await writeState(dir,original);await fn(dir);}finally{await rm(dir,{recursive:true,force:true});}}
+async function fixture(fn){const dir=await mkdtemp(join(tmpdir(),'onidot-oauth-test-'));try{await writeState(dir,original);await fn(dir);}finally{await rm(dir,{recursive:true,force:true});}}
 test('8개 프로세스가 동시에 만료 토큰을 갱신해도 HTTP 요청은 한 번이다',async()=>fixture(async dir=>{
  let calls=0;const server=createServer(async(req,res)=>{calls++;await new Promise(r=>setTimeout(r,100));res.setHeader('Content-Type','application/json');res.end(JSON.stringify(response));});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
@@ -57,7 +57,7 @@ test('틀린 제품 상태와 손상된 토큰 응답을 거부하고 pending을
 
 test('손상된 상태 진단은 원문 비밀값을 출력하지 않는다',async()=>fixture(async dir=>{
  const {writeFile}=await import('node:fs/promises');
- const home=join(dir,'codex-home'), stateDir=join(home,'doraft-oauth/wiki');
+ const home=join(dir,'codex-home'), stateDir=stateDirectory(home);
  await writeState(stateDir,original);
  await writeFile(join(stateDir,'tokens.json'),'LEAK_ME_PRIVATE_TOKEN_NOT_JSON',{mode:0o600});
  const result=await run(process.execPath,[new URL('../source/runtime/oauth-helper.mjs',import.meta.url).pathname,'status'],{env:{...process.env,CODEX_HOME:home}}).catch(e=>e);
@@ -66,12 +66,8 @@ test('손상된 상태 진단은 원문 비밀값을 출력하지 않는다',asy
  assert.equal(JSON.parse(result.stdout).error,'INVALID_OAUTH_STATE');
 }));
 
-test('helper resource가 정본 endpoint와 일치한다', async () => {
-  const { config } = await import('../source/runtime/oauth-helper.mjs');
-  const { readFile } = await import('node:fs/promises');
-  const source = JSON.parse(await readFile(new URL('../source/wiki.json', import.meta.url), 'utf8'));
-  assert.equal(config.resource, source.endpoint);
-  assert.equal(source.endpoint, 'https://labs.onidot.com/wiki');
+test('helper resource는 패키지 기본값 없이 명시한 연결을 사용한다', () => {
+  assert.equal(config.resource, process.env.ONIDOT_MCP_URL);
 });
 
 test('옛 주소 resource 상태는 전용 코드로 거부하고 상태를 바꾸지 않는다',async()=>fixture(async dir=>{
@@ -81,4 +77,25 @@ test('옛 주소 resource 상태는 전용 코드로 거부하고 상태를 바�
  await assert.rejects(getHeaders({dir,requestTokens:async()=>{throw Error('must not call');}}),/OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED/);
  assert.equal(await readFile(join(dir,'tokens.json'),'utf8'),before);
  assert.equal(JSON.parse(before).pendingRefresh,false);
+}));
+
+test('기본 상태 경로에서 집과 회사 연결은 서로의 토큰을 읽지 않는다',async()=>fixture(async dir=>{
+ const home=join(dir,'isolated-home');
+ const base={...process.env,CODEX_HOME:home,ONIDOT_SCOPE:'doraft:wiki:read offline_access'};
+ const fixtures=[
+  {...base,ONIDOT_ALIAS:'home',ONIDOT_APP_URL:'https://home.example.invalid',ONIDOT_MCP_URL:'https://home.example.invalid/mcp'},
+  {...base,ONIDOT_ALIAS:'work',ONIDOT_APP_URL:'http://127.0.0.1:7777',ONIDOT_MCP_URL:'http://127.0.0.1:7777/mcp'},
+ ];
+ const {connectionConfig}=await import('../source/runtime/oauth-helper.mjs');
+ for(const [index,env] of fixtures.entries()){
+  const cfg=connectionConfig(env);
+  await writeState(stateDirectory(home,cfg),{...original,issuer:cfg.issuer,resource:cfg.resource,accessToken:`synthetic-access-${index}-123456789`,expiresAt:Date.now()+600000});
+ }
+ for(const [index,env] of fixtures.entries()){
+  const result=await run(process.execPath,[new URL('../source/runtime/oauth-helper.mjs',import.meta.url).pathname,'headers'],{env});
+  assert.deepEqual(JSON.parse(result.stdout),{Authorization:`Bearer synthetic-access-${index}-123456789`});
+ }
+ const renamed=await run(process.execPath,[new URL('../source/runtime/oauth-helper.mjs',import.meta.url).pathname,'status'],{env:{...fixtures[0],ONIDOT_ALIAS:'other'}}).catch(e=>e);
+ assert.equal(renamed.code,1);
+ assert.equal(JSON.parse(renamed.stdout).error,'ONIDOT_LOGIN_REQUIRED');
 }));

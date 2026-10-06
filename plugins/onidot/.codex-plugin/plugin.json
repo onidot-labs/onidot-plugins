@@ -1,0 +1,29 @@
+{
+  "name": "onidot",
+  "version": "0.14.0",
+  "description": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
+  "author": {
+    "name": "onidot",
+    "url": "https://onidot.com"
+  },
+  "homepage": "https://onidot.com",
+  "repository": "https://github.com/onidot-labs/onidot-plugins",
+  "skills": "./skills/",
+  "mcpServers": {},
+  "interface": {
+    "displayName": "onidot",
+    "shortDescription": "onidot-studio 문서 검색·작성·저장",
+    "longDescription": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
+    "developerName": "onidot",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://onidot.com",
+    "defaultPrompt": [
+      "내 Wiki에서 관련 문서를 찾아 요약해 주세요.",
+      "이 내용을 Wiki 페이지로 저장해 주세요."
+    ]
+  }
+}

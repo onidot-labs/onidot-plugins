@@ -1,58 +1,34 @@
-# Doraft Plugins
+# onidot Plugins
 
-Doraft 제품별 AI 플러그인의 **유일한 원본·배포 레포**다. 서버·공통 Platform OAuth는 [doraft](https://github.com/doraft-labs/doraft)가 제공한다. [명세·수용 기준](https://wiki.doraft.com/w/0rhp3csshy8qm/pages/0rqvnznezfgpz)을 따른다. 저장소는 현재 private다.
+onidot-studio AI 플러그인 `onidot@onidot`의 원본·생성기·설치 카탈로그·패키징을 소유한다. 서버는 onidot-studio, 공통 인증은 onidot-platform이 소유한다. 작업 기준과 결과는 [W1-22P](https://labs.onidot.com/w/0rsx2c7fbz8qm/pages/0rtx2argyggsq)에 있다.
 
-| 제품 | 설치 ID | 상태 | MCP |
-| --- | --- | --- | --- |
-| Doraft Wiki | doraft-wiki@doraft | 0.13.0 | https://labs.onidot.com/wiki |
-| Doraft Notes | doraft-notes@doraft | 개발 예정·설치 불가 | 미공개 |
+## 설치와 연결
 
-같은 제품은 모든 클라이언트에서 같은 이름을 쓴다. 제품 전체를 묶은 만능 플러그인이나 Codex/Claude 접미사 변형을 만들지 않는다. 로그인은 Doraft Platform에 공통으로 하고 권한·토큰 대상은 제품별로 분리한다.
-
-## 설치
-
-### Codex
+현재 패키지 버전은 **0.14.0**이다. 플러그인은 인스턴스 주소를 고정하지 않는다. MCP 연결은 클라이언트 설정에 `onidot-<별칭>`으로 등록한다. 집 셀프호스팅 `onidot-dev`·회사 로컬 `onidot-work`는 예시이며 URL은 사용자가 선택한다.
 
 ```sh
-codex plugin marketplace add https://github.com/doraft-labs/doraft-plugins.git
-codex plugin add doraft-wiki@doraft
-node "${CODEX_HOME:-$HOME/.codex}/plugins/cache/doraft/doraft-wiki/0.13.0/scripts/oauth-helper.mjs" login
+codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
+codex plugin add onidot@onidot
+claude plugin marketplace add onidot-labs/onidot-plugins
+claude plugin install onidot@onidot --scope user
 ```
 
-이미 설치한 사용자는 `codex plugin marketplace upgrade doraft` → `codex plugin add doraft-wiki@doraft`(출력 version이 0.13.0인지 확인) → helper `login` 순서로 갱신한다. `codex plugin add`만으로는 git 마켓플레이스 스냅샷이 갱신되지 않아 이전 버전이 다시 설치된다. 로컬 macOS/Linux에서 Node.js 24 이상이 필요하다. 공유 OAuth helper가 여러 작업의 갱신을 직렬화한다. 기존 0.8.0 사용자는 helper 로그인 성공 후 `codex mcp logout doraft-wiki`로 이전 로컬 네이티브 인증을 제거하고 새 작업을 시작한다. Windows·원격 실행은 이 helper 경로를 검증하지 않았다. 플러그인에 스킬과 원격 MCP가 함께 있다. 같은 제품을 `codex mcp add`나 `doraft setup`으로 또 등록하지 않는다. CLI 로그인 성공 후 실제 작업에서 list_workspaces와 문서 조회를 확인한다.
+설치·등록의 명령, 기대 결과, 확인 방법은 [setup-onidot](source/skills/setup-onidot/SKILL.md)를 따른다. Codex inline MCP 목록은 비워 두고 사용자 설정에 연결별로 등록한다. Claude 패키지는 스킬만 제공하며 계정 커넥터나 독립 MCP 중 한 경로로 연결한다. 루트 `.mcp.json`은 생성하지 않는다. 플러그인 homepage의 `https://onidot.com`은 제품 안내 링크이며 서버·OAuth 주소가 아니다.
 
-### Claude 웹·Desktop·모바일·Code
+기존 Codex git marketplace는 `codex plugin marketplace upgrade onidot` 후 재설치한다. 선택적 공유 OAuth helper의 현재 기본 설치 경로는 `${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.14.0/scripts/oauth-helper.mjs`다. helper는 별칭·앱 URL·MCP URL·scope를 명시해야 하며 연결별로 상태와 갱신 잠금을 분리한다. 비밀값·OAuth 로그인과 권한 승인은 사람이 직접 수행한다.
 
-기본 연결은 계정의 사용자 지정 원격 커넥터 **Doraft Wiki** 하나다. URL은 `https://labs.onidot.com/wiki`, 인증은 OAuth다. 웹에서 추가한 커넥터를 같은 계정의 Desktop·모바일에서도 사용한다. Code CLI는 claude.ai 구독 인증으로 로그인한 경우 계정 연결을 불러온다. 서버는 작업 스킬도 MCP 리소스로 제공한다.
+서버 계약은 `list_spaces`·`spaceId`·`scope="SPACE"`·`skill://onidot/`·`oni_pat_/oni_at_/oni_rt_`·Onidot 헤더다. OAuth scope `doraft:wiki:*`는 유지한다. 옛 `dft_` 토큰은 재사용하지 않는다. 새 연결의 초기화 정체·READ/WRITE 모드와 실제 `list_spaces`·`get_page`를 검증한 뒤 해당 옛 로컬 등록만 제거한다. 다른 플러그인·grant·문서는 삭제하지 않는다.
 
-Code에 로컬 스킬 패키지도 필요하면 다음을 사용한다. 이 패키지는 MCP를 추가하지 않는다. 계정 플러그인 동기화로 같은 스킬을 이미 받으면 다시 설치하지 않는다.
+`npm run verify:codex -- --alias <별칭> --mcp-url <선택한 MCP URL>`은 설치·등록·선택한 서버의 OAuth resource를 비교한다. 실제 인증·문서 조회 성공은 별도로 검증한다.
 
-```sh
-claude plugin marketplace add doraft-labs/doraft-plugins
-claude plugin install doraft-wiki@doraft --scope user
-```
+## 디렉터리와 정본
 
-API 키·클라우드 제공자 인증 등 계정 커넥터를 못 쓰는 Code 환경은 같은 제품의 독립 MCP를 user scope로 등록할 수 있다. 기존 계정 커넥터와 함께 등록하지 않는다. 새 플러그인 이름을 만들지 않는다. 일반 모바일 채팅은 원격 커넥터 지원 범위이며 플러그인 파일 전체 실행을 보장하지 않는다. 모바일 Cowork의 플러그인 지원과 일반 채팅 지원을 구분한다.
-
-### GPT 웹
-
-사용자 지정 앱 이름 **Doraft Wiki**, URL `https://labs.onidot.com/wiki`, OAuth로 연결한다. 이 계정 앱은 로컬 Codex 설치·인증과 별개다. 같은 이름에 주소만 다른 앱을 남기지 않는다. 옛 주소 `https://mcp.doraft.com/wiki`로 만든 앱은 새 앱 연결을 검증한 뒤 지운다.
-
-## 이전 설치 교체
-
-먼저 `codex plugin marketplace list --json` 또는 `claude plugin marketplace list`로 doraft가 가리키는 곳을 확인한다. 이전 모노레포·로컬 worktree 경로이면 Doraft 플러그인과 doraft marketplace만 제거한 뒤 위 주소로 재설치한다. 다른 플러그인은 건드리지 않는다. 같은 주소의 기존 OAuth가 유효하면 재사용하며 토큰을 클라이언트 간 복사하지 않는다. 옛 주소 `https://mcp.doraft.com/wiki`의 로그인은 재사용되지 않는다(Codex helper는 `OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED`). 새 주소 연결을 먼저 만들고 실제 조회를 검증한 뒤 옛 커넥터·앱을 지운다.
-
-`npm run verify:codex`는 로컬 설치 manifest·버전·운영 OAuth resource를 확인한다. 설치, 인증, 도구 노출, 실제 조회·저장은 서로 다른 검증 단계다.
-
-## 개발과 릴리스
-
-- source/: 제품 카탈로그와 공통 스킬 원본
-- .github/workflows/: PR과 main에서 회귀 테스트·생성물·패키지 자동 검사
-- scripts/ 및 test/: 생성·패키징·설치 진단과 계약 테스트
-- plugins/: 동일 제품의 Codex·Claude manifest와 스킬
-- .agents/plugins/ 및 .claude-plugin/: 클라이언트별 카탈로그
-- server-resources/: 제품 서버가 버전·해시를 확인해 반입하는 스킬 산출물
-- dist/: npm run package가 만드는 제품별 ZIP 및 SHA256SUMS(git 제외)
+- `source/products.json`, `source/wiki.json`: 제품 ID `wiki`, 설치 이름 `onidot`, 버전과 안내 정보의 정본이다. 인스턴스 URL을 넣지 않는다.
+- `source/skills/`: 배포 스킬의 유일한 원본이다. 서버의 활성 지침은 manifest/context로 조회한다.
+- `source/runtime/`: 연결별로 매개변수화한 선택적 OAuth helper다.
+- `scripts/`, `test/`: 생성·패키징·진단과 계약 시험을 둔다.
+- `plugins/`, `server-resources/`, `catalog.json`, `.agents/plugins/`, `.claude-plugin/`: `npm run generate`의 생성물이다. 직접 수정하지 않는다. 서버는 고정 commit·SHA256을 검증해 스킬을 반입한다.
+- `dist/`: `npm run package`가 생성하는 ZIP·SHA256SUMS이며 git에서 제외한다.
 
 ```sh
 npm run generate
@@ -60,16 +36,8 @@ npm test
 npm run package
 ```
 
-새 제품은 source/products.json에서 planned로 시작한다. 서버 MCP와 OAuth 계약을 검증한 뒤 released로 전환하고 source/<product>.json을 추가한다. 릴리스 커밋·태그를 고정한 뒤 서버에서 명시적으로 반입하며, 플러그인 생성기가 서버 repo에 직접 쓰지 않는다.
-
-공식 지원 근거: [Claude 원격 커넥터](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp), [Claude 플러그인](https://support.claude.com/en/articles/13837440-use-plugins-in-claude), [Claude Code 플러그인](https://code.claude.com/docs/en/plugins), [Codex 플러그인](https://developers.openai.com/codex/plugins).
+이 저장소에는 onidot 제품만 둔다. 다른 제품의 planned 항목을 설치 목록에 넣지 않고 클라이언트별 플러그인 이름 변형을 만들지 않는다. 생성기는 레포 외부에 쓰지 않는다. 새 배포본을 검증하기 전 기존 사용자 설치를 변경하지 않는다.
 
 ## 로컬 릴리스 검증
 
-GitHub Actions 전체 CI는 실행하지 않습니다(#11). clean commit에서 `npm run verify:local`을 실행하면 기존 Actions와 동일하게 `npm test`(manifest 생성 결과 확인 포함)와 `npm run package`를 순서대로 실행합니다. 실패하면 후속 packaging을 중단합니다. 검증 SHA와 결과를 PR에 남깁니다. 로컬 로그는 독립 배포 인증을 대신하지 않으며 이 변경은 보호 규칙·서버 반입 digest 검증·플러그인 릴리스를 바꾸지 않습니다.
-
-## 서버 정본 bootstrap
-
-작업 시작·재개에 manifest/context를 조회하고 서버의 `protectedActions`에 알려진 policyRevision을 전달한다. 사용자별 checkpoint는 현재 ACL·출처 revision을 다시 확인한 뒤 복원한다. 서버 활성 지침 변경마다 패키지를 재설치하지 않는다. 미지원 서버용 정적 Wiki 절차는 호환 snapshot이며 활성 업무지침 정본이 아니다.
-
-일반 MCP 서버는 다른 connector·shell·전체 세션/압축을 통제하지 않는다. Codex/Claude의 스킬 활성화와 ChatGPT 계정 앱의 실제 bootstrap 호출은 각각 해당 제품·계정에서 확인해야 한다. 패키지 생성/테스트와 HTTP wire 검증은 실제 Codex/Claude/ChatGPT 설치·세션 검증의 대체물이 아니다. 현 후보는 아직 설치·배포·운영 활성화하지 않았다.
+자동 verify Actions는 실행하지 않는다(#11). clean commit에서 `npm run verify:local`로 기존 시험·생성물 일치와 패키징을 검증한다. 로컬 결과는 서버 배포 권한이나 실제 클라이언트 설치·OAuth 검증의 대체물이 아니다. 푸시·태그·릴리스는 명시 요청 범위에 따른다.
