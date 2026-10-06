@@ -4,7 +4,7 @@ onidot-studio AI 플러그인 `onidot@onidot`의 원본·생성기·설치 카�
 
 ## 설치와 연결
 
-현재 패키지 버전은 **0.14.0**이다. 플러그인은 인스턴스 주소를 고정하지 않는다. MCP 연결은 클라이언트 설정에 `onidot-<별칭>`으로 등록한다. 집 셀프호스팅 `onidot-dev`·회사 로컬 `onidot-work`는 예시이며 URL은 사용자가 선택한다.
+현재 패키지 버전은 **0.15.0**이다. 플러그인은 인스턴스 주소를 고정하지 않는다. MCP 연결은 클라이언트 설정에 `onidot-<별칭>`으로 등록한다. 집 셀프호스팅 `onidot-dev`·회사 로컬 `onidot-work`는 예시이며 URL은 사용자가 선택한다.
 
 ```sh
 codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
@@ -15,7 +15,7 @@ claude plugin install onidot@onidot --scope user
 
 설치·등록의 명령, 기대 결과, 확인 방법은 [setup-onidot](source/skills/setup-onidot/SKILL.md)를 따른다. Codex inline MCP 목록은 비워 두고 사용자 설정에 연결별로 등록한다. Claude 패키지는 스킬만 제공하며 계정 커넥터나 독립 MCP 중 한 경로로 연결한다. 루트 `.mcp.json`은 생성하지 않는다. 플러그인 homepage의 `https://onidot.com`은 제품 안내 링크이며 서버·OAuth 주소가 아니다.
 
-기존 Codex git marketplace는 `codex plugin marketplace upgrade onidot` 후 재설치한다. 선택적 공유 OAuth helper의 현재 기본 설치 경로는 `${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.14.0/scripts/oauth-helper.mjs`다. helper는 별칭·앱 URL·MCP URL·scope를 명시해야 하며 연결별로 상태와 갱신 잠금을 분리한다. 비밀값·OAuth 로그인과 권한 승인은 사람이 직접 수행한다.
+기존 Codex git marketplace는 `codex plugin marketplace upgrade onidot` 후 재설치한다. 선택적 공유 OAuth helper의 현재 기본 설치 경로는 `${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.15.0/scripts/oauth-helper.mjs`다. helper는 별칭·앱 URL·MCP URL·scope를 명시해야 하며 연결별로 상태와 갱신 잠금을 분리한다. 비밀값·OAuth 로그인과 권한 승인은 사람이 직접 수행한다.
 
 서버 계약은 `list_spaces`·`spaceId`·`scope="SPACE"`·`skill://onidot/`·`oni_pat_/oni_at_/oni_rt_`·Onidot 헤더다. OAuth scope는 `onidot:wiki:*`이며 서버는 옛 이름 `doraft:wiki:*`도 받는다. 옛 `dft_` 토큰은 재사용하지 않는다. 새 연결의 초기화 정체·READ/WRITE 모드와 실제 `list_spaces`·`get_page`를 검증한 뒤 해당 옛 로컬 등록만 제거한다. 다른 플러그인·grant·문서는 삭제하지 않는다.
 
