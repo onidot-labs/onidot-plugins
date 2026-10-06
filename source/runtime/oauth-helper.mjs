@@ -7,6 +7,14 @@ import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 
 const failure=code=>new Error(code);
+// S1: servers name the scopes onidot:wiki:*. doraft:wiki:* was their name; servers still accept it,
+// so either spelling may be configured (and is requested as written) or answered.
+const legacyScopes=Object.freeze({'doraft:wiki:read':'onidot:wiki:read','doraft:wiki:write':'onidot:wiki:write'});
+const canonicalScope=scope=>legacyScopes[scope]??scope;
+const knownScopes=['onidot:wiki:read','onidot:wiki:write','offline_access'];
+// The state key predates S1 and hashes the scope in its Doraft spelling, so renaming ONIDOT_SCOPE
+// (or the new default) keeps the stored login of the same permissions.
+const stateKeyScope=scope=>scope.split(' ').map(s=>Object.keys(legacyScopes).find(old=>legacyScopes[old]===s)??s).join(' ');
 export function connectionConfig(env=process.env){
  if(!env.ONIDOT_APP_URL || !env.ONIDOT_MCP_URL || !env.ONIDOT_ALIAS)throw failure('ONIDOT_CONNECTION_REQUIRED');
  if(!/^[a-z][a-z0-9-]{0,63}$/.test(env.ONIDOT_ALIAS))throw failure('INVALID_ONIDOT_ALIAS');
@@ -16,9 +24,9 @@ export function connectionConfig(env=process.env){
   if((url.protocol!=='https:' && !(url.protocol==='http:' && loopback)) || url.username || url.password || url.search || url.hash || (originOnly && url.pathname!=='/'))throw failure('INVALID_ONIDOT_URL');
   return originOnly?url.origin:value;
  }
- const scope=env.ONIDOT_SCOPE || 'doraft:wiki:read offline_access';
- const scopes=scope.split(' ');
- if(!scopes.includes('doraft:wiki:read') || scopes.some(s=>!['doraft:wiki:read','doraft:wiki:write','offline_access'].includes(s)))throw failure('INVALID_ONIDOT_SCOPE');
+ const scope=env.ONIDOT_SCOPE || 'onidot:wiki:read offline_access';
+ const scopes=scope.split(' ').map(canonicalScope);
+ if(!scopes.includes('onidot:wiki:read') || scopes.some(s=>!knownScopes.includes(s)))throw failure('INVALID_ONIDOT_SCOPE');
  return Object.freeze({issuer:address(env.ONIDOT_APP_URL,true),resource:address(env.ONIDOT_MCP_URL),alias:env.ONIDOT_ALIAS,scope});
 }
 // Read lazily so missing connection parameters never select a default instance.
@@ -30,7 +38,7 @@ export const config=Object.freeze({
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 // New grants only: never copy tokens from the retired helper or between connections.
 export function stateDirectory(home=process.env.CODEX_HOME || resolve(homedir(),'.codex'),connection=connectionConfig()){
- const identity=createHash('sha256').update(JSON.stringify([connection.alias,connection.issuer,connection.resource,connection.scope])).digest('hex');
+ const identity=createHash('sha256').update(JSON.stringify([connection.alias,connection.issuer,connection.resource,stateKeyScope(connection.scope)])).digest('hex');
  return resolve(home,'onidot-oauth',identity);
 }
 const stateRoot=()=>stateDirectory();
@@ -78,8 +86,9 @@ function validateState(s){
  if(s.pendingRefresh)throw failure('OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED');
 }
 function nextState(s,result,started){
- const scopes=String(result.scope??'').split(' ').filter(Boolean);
- if(result.token_type?.toLowerCase()!=='bearer' || !validToken(result.access_token) || !validToken(result.refresh_token) || !Number.isFinite(result.expires_in) || result.expires_in<=0 || result.expires_in>86400 || !scopes.includes('doraft:wiki:read') || scopes.some(scope=>!config.scope.split(' ').includes(scope)))throw failure('INVALID_OAUTH_TOKEN_RESPONSE');
+ const scopes=String(result.scope??'').split(' ').filter(Boolean).map(canonicalScope);
+ const granted=config.scope.split(' ').map(canonicalScope);
+ if(result.token_type?.toLowerCase()!=='bearer' || !validToken(result.access_token) || !validToken(result.refresh_token) || !Number.isFinite(result.expires_in) || result.expires_in<=0 || result.expires_in>86400 || !scopes.includes('onidot:wiki:read') || scopes.some(scope=>!granted.includes(scope)))throw failure('INVALID_OAUTH_TOKEN_RESPONSE');
  return {...s,schema:1,issuer:config.issuer,resource:config.resource,accessToken:result.access_token,refreshToken:result.refresh_token,expiresAt:started+result.expires_in*1000,pendingRefresh:false};
 }
 async function post(path,body,json=false){

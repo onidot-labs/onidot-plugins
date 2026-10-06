@@ -13,7 +13,7 @@ test('onidot 설치 이름과 서버 반입 product ID를 유지하고 인스턴
   assert.equal(source.name, 'onidot');
   assert.deepEqual(source.skills, ['setup-onidot', 'use-onidot']);
   assert.equal('endpoint' in source, false);
-  assert.equal(config.scope, 'doraft:wiki:read doraft:wiki:write offline_access');
+  assert.equal(config.scope, 'onidot:wiki:read onidot:wiki:write offline_access');
   const manifest = await json('server-resources/wiki/manifest.json');
   assert.equal('issuer' in manifest, false);
   assert.equal('resource' in manifest, false);

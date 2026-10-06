@@ -81,7 +81,7 @@ test('옛 주소 resource 상태는 전용 코드로 거부하고 상태를 바�
 
 test('기본 상태 경로에서 집과 회사 연결은 서로의 토큰을 읽지 않는다',async()=>fixture(async dir=>{
  const home=join(dir,'isolated-home');
- const base={...process.env,CODEX_HOME:home,ONIDOT_SCOPE:'doraft:wiki:read offline_access'};
+ const base={...process.env,CODEX_HOME:home,ONIDOT_SCOPE:'onidot:wiki:read offline_access'};
  const fixtures=[
   {...base,ONIDOT_ALIAS:'home',ONIDOT_APP_URL:'https://home.example.invalid',ONIDOT_MCP_URL:'https://home.example.invalid/mcp'},
   {...base,ONIDOT_ALIAS:'work',ONIDOT_APP_URL:'http://127.0.0.1:7777',ONIDOT_MCP_URL:'http://127.0.0.1:7777/mcp'},

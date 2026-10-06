@@ -27,17 +27,18 @@ test('서버 W1-22 승인 스킬 snapshot과 업무 계약이 일치한다', asy
   assert.equal(hash(await read('source/skills/use-onidot/SKILL.md')), 'db67849f1ac8793b9860aa565b9ee72f271a098ddd2df58af39e9fecda2becac');
   const setup = await read('source/skills/setup-onidot/SKILL.md');
   const server = setup.slice(0, setup.indexOf('\n## 클라이언트별 수동 등록'));
-  assert.equal(hash(server), 'd544e5425424f46828bfab869fa53dfbe0b0b9e50306b3dd86d73a001c6ff06b');
+  // S1(onidot-studio Wiki 0rv6m4w3zs92z): scope 안내 한 줄이 onidot:wiki:*로 바뀐 서버 스냅샷.
+  assert.equal(hash(server), 'e6e7c3d553065b481c783784f86d1ce519764c6862ba11b2b78972aee43a9e72');
 });
 
 test('명시하지 않은 권한은 READ이며 별칭·주소·scope별로 OAuth 상태를 분리한다', () => {
   const env = { ONIDOT_APP_URL: 'https://app.example.invalid', ONIDOT_MCP_URL: 'https://mcp.example.invalid/mcp', ONIDOT_ALIAS: 'home' };
   const home = connectionConfig(env);
-  assert.equal(home.scope, 'doraft:wiki:read offline_access');
+  assert.equal(home.scope, 'onidot:wiki:read offline_access');
   const location = stateDirectory('/synthetic/codex', home);
   assert.equal(stateDirectory('/synthetic/codex', connectionConfig(env)), location);
   for (const patch of [{ ONIDOT_ALIAS: 'work' }, { ONIDOT_APP_URL: 'https://second.example.invalid' },
-    { ONIDOT_MCP_URL: 'http://127.0.0.1:7777/mcp' }, { ONIDOT_SCOPE: 'doraft:wiki:read doraft:wiki:write offline_access' }]) {
+    { ONIDOT_MCP_URL: 'http://127.0.0.1:7777/mcp' }, { ONIDOT_SCOPE: 'onidot:wiki:read onidot:wiki:write offline_access' }]) {
     assert.notEqual(stateDirectory('/synthetic/codex', connectionConfig({ ...env, ...patch })), location);
   }
   for (const patch of [{ ONIDOT_ALIAS: '../work' }, { ONIDOT_MCP_URL: 'http://public.example.invalid/mcp' },

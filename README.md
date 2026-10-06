@@ -17,7 +17,7 @@ claude plugin install onidot@onidot --scope user
 
 기존 Codex git marketplace는 `codex plugin marketplace upgrade onidot` 후 재설치한다. 선택적 공유 OAuth helper의 현재 기본 설치 경로는 `${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.14.0/scripts/oauth-helper.mjs`다. helper는 별칭·앱 URL·MCP URL·scope를 명시해야 하며 연결별로 상태와 갱신 잠금을 분리한다. 비밀값·OAuth 로그인과 권한 승인은 사람이 직접 수행한다.
 
-서버 계약은 `list_spaces`·`spaceId`·`scope="SPACE"`·`skill://onidot/`·`oni_pat_/oni_at_/oni_rt_`·Onidot 헤더다. OAuth scope `doraft:wiki:*`는 유지한다. 옛 `dft_` 토큰은 재사용하지 않는다. 새 연결의 초기화 정체·READ/WRITE 모드와 실제 `list_spaces`·`get_page`를 검증한 뒤 해당 옛 로컬 등록만 제거한다. 다른 플러그인·grant·문서는 삭제하지 않는다.
+서버 계약은 `list_spaces`·`spaceId`·`scope="SPACE"`·`skill://onidot/`·`oni_pat_/oni_at_/oni_rt_`·Onidot 헤더다. OAuth scope는 `onidot:wiki:*`이며 서버는 옛 이름 `doraft:wiki:*`도 받는다. 옛 `dft_` 토큰은 재사용하지 않는다. 새 연결의 초기화 정체·READ/WRITE 모드와 실제 `list_spaces`·`get_page`를 검증한 뒤 해당 옛 로컬 등록만 제거한다. 다른 플러그인·grant·문서는 삭제하지 않는다.
 
 `npm run verify:codex -- --alias <별칭> --mcp-url <선택한 MCP URL>`은 설치·등록·선택한 서버의 OAuth resource를 비교한다. 실제 인증·문서 조회 성공은 별도로 검증한다.
 
