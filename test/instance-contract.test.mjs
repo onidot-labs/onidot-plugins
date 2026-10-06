@@ -61,9 +61,9 @@ test('manifest·카탈로그·스킬·스크립트는 인스턴스 주소나 단
 
 test('등록 안내는 별칭·URL·사람의 OAuth 단계와 실제 조회 검증을 제공한다', async () => {
   const setup = await read('source/skills/setup-onidot/SKILL.md');
-  for (const value of ['APP_URL', 'MCP_URL', 'ALIAS', 'onidot-home', 'onidot-work',
+  for (const value of ['APP_URL', 'MCP_URL', 'ALIAS', 'onidot-dev', 'onidot-work',
     'claude mcp add --transport http', '--scope user', 'codex mcp add',
-    '[mcp_servers.onidot-home]', 'codex mcp login', '사용자 지정 커넥터',
+    '[mcp_servers.onidot-dev]', 'codex mcp login', '사용자 지정 커넥터',
     '셀프호스팅', '사람이 직접', 'serverInfo.name=onidot', 'list_spaces', 'get_page']) assert.ok(setup.includes(value), value);
 });
 

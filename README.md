@@ -4,7 +4,7 @@ onidot-studio AI 플러그인 `onidot@onidot`의 원본·생성기·설치 카�
 
 ## 설치와 연결
 
-현재 패키지 버전은 **0.14.0**이다. 플러그인은 인스턴스 주소를 고정하지 않는다. MCP 연결은 클라이언트 설정에 `onidot-<별칭>`으로 등록한다. 집 셀프호스팅 `onidot-home`·회사 로컬 `onidot-work`는 예시이며 URL은 사용자가 선택한다.
+현재 패키지 버전은 **0.14.0**이다. 플러그인은 인스턴스 주소를 고정하지 않는다. MCP 연결은 클라이언트 설정에 `onidot-<별칭>`으로 등록한다. 집 셀프호스팅 `onidot-dev`·회사 로컬 `onidot-work`는 예시이며 URL은 사용자가 선택한다.
 
 ```sh
 codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git

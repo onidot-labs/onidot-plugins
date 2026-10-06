@@ -34,11 +34,11 @@ onidot 플러그인은 인스턴스 주소를 고정하지 않는다. 연결마�
 ```sh
 APP_URL='<앱 주소>'
 MCP_URL='<MCP 주소>'
-ALIAS='home'
+ALIAS='dev'
 MCP_NAME="onidot-${ALIAS}"
 ```
 
-집 셀프호스팅은 `onidot-home`, 회사 로컬은 별도의 URL과 `ALIAS='work'`를 입력해 `onidot-work`로 등록하는 예시다. URL 기본값은 없다. 기대 결과는 서로 다른 이름·주소의 연결 두 개다. 이미 같은 주소의 연결이 있으면 중복 등록하지 않는다.
+집 셀프호스팅은 `onidot-dev`, 회사 로컬은 별도의 URL과 `ALIAS='work'`를 입력해 `onidot-work`로 등록하는 예시다. URL 기본값은 없다. 기대 결과는 서로 다른 이름·주소의 연결 두 개다. 이미 같은 주소의 연결이 있으면 중복 등록하지 않는다.
 
 비밀값·OAuth 로그인·Space 선택과 READ/WRITE 승인은 **사람이 직접** 수행한다. AI 에이전트는 사용자가 요청한 연결의 공개 URL·별칭·명령만 준비하고, 로그인 화면이나 전체 인가 URL·토큰을 로그에 남기지 않는다.
 
@@ -65,7 +65,7 @@ codex mcp login "$MCP_NAME"
 같은 설정을 수동으로 만들려면 `${CODEX_HOME:-$HOME/.codex}/config.toml`의 해당 항목에 실제 URL을 넣는다. 두 방식 중 하나만 사용하고 기존 설정을 보존한다.
 
 ```toml
-[mcp_servers.onidot-home]
+[mcp_servers.onidot-dev]
 url = "<집 인스턴스 MCP_URL>"
 
 [mcp_servers.onidot-work]
@@ -93,7 +93,7 @@ node "$HELPER" status
 WRITE가 승인된 연결의 scope는 `doraft:wiki:read doraft:wiki:write offline_access`다. helper를 연결에 쓸 때는 해당 `mcp_servers` 항목의 `http_headers_helper` 명령 안에 동일한 공개 `ONIDOT_ALIAS`·`ONIDOT_APP_URL`·`ONIDOT_MCP_URL`·`ONIDOT_SCOPE` 값을 명시한다. 새 프로세스가 위 셸의 export를 자동 상속한다고 가정하지 않는다.
 
 ```toml
-[mcp_servers.onidot-home]
+[mcp_servers.onidot-dev]
 url = "<MCP_URL>"
 http_headers_helper = 'ONIDOT_ALIAS=home ONIDOT_APP_URL="<APP_URL>" ONIDOT_MCP_URL="<MCP_URL>" ONIDOT_SCOPE="doraft:wiki:read offline_access" node "<설치 경로>/scripts/oauth-helper.mjs" headers'
 ```
