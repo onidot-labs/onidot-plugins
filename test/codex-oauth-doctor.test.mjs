@@ -74,13 +74,13 @@ test('진단 CLI는 명시한 별칭 등록과 로컬 OAuth metadata의 resource
   try {
     const endpoint = `http://127.0.0.1:${server.address().port}/mcp`;
     resource = endpoint;
-    const cache = join(dir, 'plugins/cache/onidot/onidot/0.15.1/.codex-plugin');
+    const cache = join(dir, 'plugins/cache/onidot/onidot/0.15.2/.codex-plugin');
     await mkdir(cache, { recursive: true });
-    await writeFile(join(cache, 'plugin.json'), JSON.stringify({ name: 'onidot', version: '0.15.1', mcpServers: {} }));
+    await writeFile(join(cache, 'plugin.json'), JSON.stringify({ name: 'onidot', version: '0.15.2', mcpServers: {} }));
     const mock = join(dir, 'codex.mjs');
     await writeFile(mock, `#!${process.execPath}\nconst args=process.argv.slice(2);\n` +
       `if(args.join(' ')==='plugin marketplace list --json') console.log(JSON.stringify({marketplaces:[{name:'onidot',marketplaceSource:{sourceType:'git',source:'https://github.com/onidot-labs/onidot-plugins'}}]}));\n` +
-      `else if(args.join(' ')==='plugin list --marketplace onidot --json') console.log(JSON.stringify({installed:[{pluginId:'onidot@onidot',version:'0.15.1',enabled:true}]}));\n` +
+      `else if(args.join(' ')==='plugin list --marketplace onidot --json') console.log(JSON.stringify({installed:[{pluginId:'onidot@onidot',version:'0.15.2',enabled:true}]}));\n` +
       `else if(args.join(' ')==='mcp get onidot-work --json') console.log(JSON.stringify({enabled:true,transport:{type:'streamable_http',url:${JSON.stringify(endpoint)}}}));\n` +
       `else process.exit(9);\n`, { mode: 0o700 });
     const args = [new URL('../scripts/verify-codex-oauth.mjs', import.meta.url).pathname, '--alias', 'work', '--mcp-url', endpoint];

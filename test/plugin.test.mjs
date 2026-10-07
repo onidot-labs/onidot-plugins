@@ -216,14 +216,14 @@ test('Claude 패키지만 세션 시작 훅으로 onidot 기본 지침의 존재
   assert.equal(await readText('plugins/onidot/claude/session-start.json'), await readText('source/runtime/claude-session-start.json'));
   assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
   const context = output.hookSpecificOutput.additionalContext;
-  for (const required of ['get_assistant_context', 'defaultGuide', 'onidot-guide', '로컬 지침', '적용 중인 지침']) assert.ok(context.includes(required), required);
+  for (const required of ['get_assistant_context', 'defaultGuide', 'onidot-guide', '로컬 지침', '적용 중인 지침', '기억', '개인 Space', '자체 메모리']) assert.ok(context.includes(required), required);
   assert.ok(context.length < 2000, `additionalContext ${context.length}자`);
 });
 
 test('onidot-guide 스킬은 기본 지침을 읽는 조건과 우선순위를 짧게 담는다', async () => {
   const skill = await readText('source/skills/onidot-guide/SKILL.md');
   const description = frontmatter(skill, 'description');
-  for (const required of ['프로젝트', '이전 결정', '적용 중인 지침']) assert.ok(description.includes(required), required);
+  for (const required of ['프로젝트', '이전 결정', '적용 중인 지침', '기억', '개인 Space']) assert.ok(description.includes(required), required);
   for (const required of ['list_spaces', 'get_assistant_context', 'defaultGuide', 'use-onidot']) assert.ok(skill.includes(required), required);
   assert.ok(skill.length < 3000, `skill ${skill.length}자`);
 });

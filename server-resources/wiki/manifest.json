@@ -3,11 +3,11 @@
   "product": "wiki",
   "name": "onidot",
   "displayName": "onidot",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "repository": "https://github.com/onidot-labs/onidot-plugins",
   "files": {
-    "skills/setup-onidot/SKILL.md": "daf6e35cd89205d34680e397b0be65b3064c4cdef6d40e985c095a8a16ef8cf1",
+    "skills/setup-onidot/SKILL.md": "665f23d8e2fab5126c710037c5047ec8eb1250e7247a42135de4adb71a957468",
     "skills/use-onidot/SKILL.md": "db67849f1ac8793b9860aa565b9ee72f271a098ddd2df58af39e9fecda2becac",
-    "skills/onidot-guide/SKILL.md": "b051c722a1d35497ce0c9f880b2f799e001a90ed58bf921df5ef8345b13e258b"
+    "skills/onidot-guide/SKILL.md": "7b7c60053499c5e58fea0b7074ff1353c27b48cf6b9bfdb025c0b09da5567ed7"
   }
 }
