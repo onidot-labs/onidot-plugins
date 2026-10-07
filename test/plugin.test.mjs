@@ -216,7 +216,9 @@ test('Claude 패키지만 세션 시작 훅으로 onidot 기본 지침의 존재
   assert.equal(await readText('plugins/onidot/claude/session-start.json'), await readText('source/runtime/claude-session-start.json'));
   assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
   const context = output.hookSpecificOutput.additionalContext;
-  for (const required of ['get_assistant_context', 'defaultGuide', 'onidot-guide', '로컬 지침', '적용 중인 지침', '기억', '개인 Space', '자체 메모리']) assert.ok(context.includes(required), required);
+  for (const required of ['get_onidot_guide', 'onidot-guide', '로컬 지침', '적용 중인 지침', '기억', '개인 Space', '자체 메모리']) assert.ok(context.includes(required), required);
+  // Space 선택 규칙은 서버 기본 지침에 있다. 시작 안내는 Space를 고르게 하지 않고 지침을 먼저 읽게 한다.
+  for (const forbidden of ['list_spaces', '확인받']) assert.ok(!context.includes(forbidden), forbidden);
   assert.ok(context.length < 2000, `additionalContext ${context.length}자`);
 });
 
@@ -224,6 +226,10 @@ test('onidot-guide 스킬은 기본 지침을 읽는 조건과 우선순위를 �
   const skill = await readText('source/skills/onidot-guide/SKILL.md');
   const description = frontmatter(skill, 'description');
   for (const required of ['프로젝트', '이전 결정', '적용 중인 지침', '기억', '개인 Space']) assert.ok(description.includes(required), required);
-  for (const required of ['list_spaces', 'get_assistant_context', 'defaultGuide', 'use-onidot']) assert.ok(skill.includes(required), required);
+  for (const required of ['get_onidot_guide', 'get_assistant_context', 'defaultGuide', 'use-onidot']) assert.ok(skill.includes(required), required);
+  // 첫 단계는 Space 없이 기본 지침을 읽는 것이다. list_spaces는 이전 버전 서버용 대안으로만 남는다.
+  const firstStep = skill.split('\n').find((line) => line.startsWith('1. '));
+  assert.ok(firstStep.includes('get_onidot_guide'), firstStep);
+  assert.ok(!skill.includes('확인받'), 'Space 확인 규칙은 서버 기본 지침에 둔다');
   assert.ok(skill.length < 3000, `skill ${skill.length}자`);
 });
