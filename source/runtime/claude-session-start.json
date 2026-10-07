@@ -1,0 +1,6 @@
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "onidot 플러그인이 켜져 있습니다. onidot은 사용자의 지식·결정·작업 기록 저장소이고 연결한 AI에 기본 지침을 줍니다. onidot MCP 연결이 있으면, 사용자의 프로젝트·도메인·이전 결정에 기대는 일을 시작할 때 onidot-guide 스킬대로 list_spaces로 Space를 고른 뒤 get_assistant_context(spaceId)를 한 번 호출해 onidot 기본 지침(defaultGuide)과 Space 지침을 읽고 따르세요. 이번 대화의 지시와 로컬 지침(AGENTS.md, CLAUDE.md 등)이 그보다 우선합니다. 적용 중인 지침을 물으면 onidot 기본 지침도 포함해 답하세요. 간단한 질문, 잡담, onidot과 무관한 일에는 조회하지 않습니다."
+  }
+}

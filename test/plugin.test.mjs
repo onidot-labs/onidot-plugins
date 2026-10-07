@@ -199,3 +199,31 @@ test('연결 스킬은 옛 주소 재연결·전용 오류 코드·마켓플레�
     assert.ok(skill.includes(required), required);
   }
 });
+
+test('Claude 패키지만 세션 시작 훅으로 onidot 기본 지침의 존재와 읽는 방법을 알린다', async () => {
+  const claude = await readJson('plugins/onidot/.claude-plugin/plugin.json');
+  const codex = await readJson('plugins/onidot/.codex-plugin/plugin.json');
+  assert.equal(claude.hooks, './claude/hooks.json');
+  assert.equal('hooks' in codex, false);
+  // Codex는 hooks/hooks.json만 자동 탐지하므로 그 경로를 만들지 않는다.
+  await assert.rejects(readFile(new URL('plugins/onidot/hooks/hooks.json', root)), { code: 'ENOENT' });
+  const hooks = await readJson('plugins/onidot/claude/hooks.json');
+  const [entry] = hooks.hooks.SessionStart;
+  assert.equal(entry.matcher, 'startup|resume|clear|compact');
+  assert.equal(entry.hooks[0].type, 'command');
+  assert.equal(entry.hooks[0].command, 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"');
+  const output = await readJson('plugins/onidot/claude/session-start.json');
+  assert.equal(await readText('plugins/onidot/claude/session-start.json'), await readText('source/runtime/claude-session-start.json'));
+  assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
+  const context = output.hookSpecificOutput.additionalContext;
+  for (const required of ['get_assistant_context', 'defaultGuide', 'onidot-guide', '로컬 지침', '적용 중인 지침']) assert.ok(context.includes(required), required);
+  assert.ok(context.length < 2000, `additionalContext ${context.length}자`);
+});
+
+test('onidot-guide 스킬은 기본 지침을 읽는 조건과 우선순위를 짧게 담는다', async () => {
+  const skill = await readText('source/skills/onidot-guide/SKILL.md');
+  const description = frontmatter(skill, 'description');
+  for (const required of ['프로젝트', '이전 결정', '적용 중인 지침']) assert.ok(description.includes(required), required);
+  for (const required of ['list_spaces', 'get_assistant_context', 'defaultGuide', 'use-onidot']) assert.ok(skill.includes(required), required);
+  assert.ok(skill.length < 3000, `skill ${skill.length}자`);
+});
