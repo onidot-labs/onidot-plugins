@@ -66,8 +66,8 @@ test('재생성과 패키징은 은퇴한 생성물을 제거하고 onidot ZIP�
     await writeFile(join(dir, 'dist/doraft-wiki-0.13.0.zip'), 'retired fixture');
     await writeFile(join(dir, 'dist/onidot-0.13.0.zip'), 'retired instance-bound fixture');
     execFileSync(process.execPath, ['scripts/package.mjs'], { cwd: dir });
-    assert.deepEqual((await readdir(join(dir, 'dist'))).sort(), ['SHA256SUMS', 'onidot-0.15.1.zip']);
-    const archive = join(dir, 'dist/onidot-0.15.1.zip');
+    assert.deepEqual((await readdir(join(dir, 'dist'))).sort(), ['SHA256SUMS', 'onidot-0.15.2.zip']);
+    const archive = join(dir, 'dist/onidot-0.15.2.zip');
     const files = execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' });
     for (const path of ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', 'skills/setup-onidot/SKILL.md', 'skills/use-onidot/SKILL.md', 'scripts/oauth-helper.mjs']) assert.ok(files.split('\n').includes(path), path);
     assert.ok(!files.includes('doraft-wiki'));
@@ -76,6 +76,6 @@ test('재생성과 패키징은 은퇴한 생성물을 제거하고 onidot ZIP�
     assert.equal(manifest.name, 'onidot');
     assert.deepEqual(manifest.mcpServers, {});
     const hash = createHash('sha256').update(await readFile(archive)).digest('hex');
-    assert.equal(await readFile(join(dir, 'dist/SHA256SUMS'), 'utf8'), `${hash}  onidot-0.15.1.zip\n`);
+    assert.equal(await readFile(join(dir, 'dist/SHA256SUMS'), 'utf8'), `${hash}  onidot-0.15.2.zip\n`);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
