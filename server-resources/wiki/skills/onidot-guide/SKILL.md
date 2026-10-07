@@ -7,7 +7,7 @@ description: onidot이 연결돼 있을 때, 사용자의 프로젝트·도메�
 
 onidot은 사용자의 지식·결정·작업 기록 저장소다. 판단과 실행은 당신이 하고, onidot은 지침과 근거를 준다.
 
-1. `list_spaces`로 승인된 Space를 확인하고 일에 맞는 Space를 고른다. 사용자가 Space를 지정하면 그 Space를 쓴다.
+1. `list_spaces`로 승인된 Space를 확인하고 일에 맞는 Space를 고른다. 사용자가 Space를 지정하면 그 Space를 쓴다. 지정하지 않았으면 대화·저장소·최근 작업으로 추론하되, 그 Space에 **쓰기 전에** 추론한 Space와 근거를 짧게 제시하고 확인받는다. 읽기·검색은 확인 없이 해도 되고, 확인받은 뒤에는 같은 일 안에서 다시 묻지 않는다. 일반화한 배움을 개인 Space에 남기는 것은 예외로 확인 없이 한다.
 2. `get_assistant_context(spaceId)`를 한 번 호출한다. `defaultGuide`는 onidot 기본 지침이고, `instructions`는 그 Space에서 검토·활성화된 지침이다.
 3. 우선순위는 이번 대화의 사용자 지시 → 지금 쓰는 도구의 로컬 지침(AGENTS.md, CLAUDE.md 등) → 저장소 지침 → Space 지침 → onidot 기본 지침 순이다. 충돌하면 앞쪽을 따른다.
 4. 기본 지침의 찾기·판단·배우기·이어가기·플레이북을 일에 적용한다. 문서 편집 절차는 `use-onidot`을 따른다.
