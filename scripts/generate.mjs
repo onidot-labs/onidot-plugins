@@ -36,7 +36,12 @@ for (const product of catalog.products) {
       capabilities: ['Read', 'Write'], websiteURL: 'https://onidot.com',
       defaultPrompt: app.defaultPrompt } }));
   // Claude account connector owns MCP. A root .mcp.json would silently attach a second server in Code.
-  outputs.set(`${base}/.claude-plugin/plugin.json`, json(common));
+  outputs.set(`${base}/.claude-plugin/plugin.json`, json({ ...common, hooks: './claude/hooks.json' }));
+  // Claude Code only: a SessionStart hook tells every new session that onidot carries a default guide.
+  // It lives outside hooks/hooks.json so Codex never auto-discovers it.
+  outputs.set(`${base}/claude/hooks.json`, json({ hooks: { SessionStart: [{ matcher: 'startup|resume|clear|compact',
+    hooks: [{ type: 'command', command: 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"' }] }] } }));
+  outputs.set(`${base}/claude/session-start.json`, await readFile(resolve(root, 'source/runtime/claude-session-start.json'), 'utf8'));
   outputs.set(`${base}/scripts/oauth-helper.mjs`, await readFile(resolve(root, 'source/runtime/oauth-helper.mjs'), 'utf8'));
   const hashes = {};
   for (const skill of app.skills) {
