@@ -55,8 +55,10 @@ test('서버는 플러그인과 같은 스킬 원문을 MCP 리소스로 제공�
   const source = await readJson('source/wiki.json');
   assert.deepEqual(await listDirs(SERVER_SKILLS), [...source.skills].sort());
   for (const skill of source.skills) {
-    assert.equal(await readText(`${SERVER_SKILLS}${skill}/SKILL.md`), await readText(`source/skills/${skill}/SKILL.md`), skill);
-    assert.equal(await readText(`plugins/onidot/skills/${skill}/SKILL.md`), await readText(`source/skills/${skill}/SKILL.md`), skill);
+    // 생성기는 원문의 {{version}}만 플러그인 버전으로 바꾼다.
+    const expected = (await readText(`source/skills/${skill}/SKILL.md`)).replaceAll('{{version}}', source.version);
+    assert.equal(await readText(`${SERVER_SKILLS}${skill}/SKILL.md`), expected, skill);
+    assert.equal(await readText(`plugins/onidot/skills/${skill}/SKILL.md`), expected, skill);
   }
 });
 
@@ -213,7 +215,8 @@ test('Claude 패키지만 세션 시작 훅으로 onidot 기본 지침의 존재
   assert.equal(entry.hooks[0].type, 'command');
   assert.equal(entry.hooks[0].command, 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"');
   const output = await readJson('plugins/onidot/claude/session-start.json');
-  assert.equal(await readText('plugins/onidot/claude/session-start.json'), await readText('source/runtime/claude-session-start.json'));
+  const version = (await readJson('source/wiki.json')).version;
+  assert.equal(await readText('plugins/onidot/claude/session-start.json'), (await readText('source/runtime/claude-session-start.json')).replaceAll('{{version}}', version));
   assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
   const context = output.hookSpecificOutput.additionalContext;
   for (const required of ['get_onidot_guide', 'onidot-guide', '로컬 지침', '적용 중인 지침', '기억', '개인 Space', '자체 메모리']) assert.ok(context.includes(required), required);
@@ -232,4 +235,20 @@ test('onidot-guide 스킬은 기본 지침을 읽는 조건과 우선순위를 �
   assert.ok(firstStep.includes('get_onidot_guide'), firstStep);
   assert.ok(!skill.includes('확인받'), 'Space 확인 규칙은 서버 기본 지침에 둔다');
   assert.ok(skill.length < 3000, `skill ${skill.length}자`);
+});
+
+test('시작 안내와 onidot-guide 스킬은 설치된 플러그인 버전을 밝혀 AI가 최신 버전과 비교하게 한다', async () => {
+  const { version } = await readJson('source/wiki.json');
+  const notice = `onidot 플러그인 버전은 ${version}입니다`;
+  for (const path of ['plugins/onidot/skills/onidot-guide/SKILL.md', `${SERVER_SKILLS}onidot-guide/SKILL.md`]) {
+    const skill = await readText(path);
+    assert.ok(skill.includes(notice), path);
+    assert.ok(!skill.includes('{{version}}'), path);
+  }
+  const hook = (await readJson('plugins/onidot/claude/session-start.json')).hookSpecificOutput.additionalContext;
+  assert.ok(hook.includes(notice), hook);
+  for (const path of ['source/skills/onidot-guide/SKILL.md', 'source/runtime/claude-session-start.json']) {
+    assert.ok((await readText(path)).includes('{{version}}'), path);
+  }
+  assert.ok((await readText('source/skills/onidot-guide/SKILL.md')).includes('updates'), '업데이트 정보 사용 안내');
 });
