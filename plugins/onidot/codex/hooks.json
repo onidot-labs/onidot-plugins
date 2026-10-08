@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat \"${CLAUDE_PLUGIN_ROOT}/claude/session-start.json\""
+            "command": "cat \"${PLUGIN_ROOT}/claude/session-start.json\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/recording-check.sh\" claude"
+            "command": "sh \"${PLUGIN_ROOT}/scripts/recording-check.sh\" codex"
           }
         ]
       }

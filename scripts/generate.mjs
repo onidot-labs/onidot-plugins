@@ -30,19 +30,26 @@ for (const product of catalog.products) {
     repository: catalog.repository, skills: './skills/' };
   outputs.set(`${base}/.codex-plugin/plugin.json`, json({ ...common,
     // Connections are registered by alias in client config; the package never selects an instance.
-    mcpServers: {},
+    mcpServers: {}, hooks: './codex/hooks.json',
     interface: { displayName: app.displayName, shortDescription: app.shortDescription,
       longDescription: app.description, developerName: 'onidot', category: 'Productivity',
       capabilities: ['Read', 'Write'], websiteURL: 'https://onidot.com',
       defaultPrompt: app.defaultPrompt } }));
   // Claude account connector owns MCP. A root .mcp.json would silently attach a second server in Code.
   outputs.set(`${base}/.claude-plugin/plugin.json`, json({ ...common, hooks: './claude/hooks.json' }));
-  // Claude Code only: a SessionStart hook tells every new session that onidot carries a default guide.
-  // It lives outside hooks/hooks.json so Codex never auto-discovers it.
+  // Both clients declare their own path; no shared default hook file is generated.
   outputs.set(`${base}/claude/hooks.json`, json({ hooks: { SessionStart: [{ matcher: 'startup|resume|clear|compact',
-    hooks: [{ type: 'command', command: 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"' }] }] } }));
+    hooks: [{ type: 'command', command: 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"' }] }],
+    Stop: [{ hooks: [{ type: 'command', command: 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/recording-check.sh" claude' }] }] } }));
+  outputs.set(`${base}/codex/hooks.json`, json({ hooks: {
+    SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: [{ type: 'command',
+      command: 'cat "${PLUGIN_ROOT}/claude/session-start.json"' }] }],
+    Stop: [{ hooks: [{ type: 'command',
+      command: 'sh "${PLUGIN_ROOT}/scripts/recording-check.sh" codex' }] }]
+  } }));
   outputs.set(`${base}/claude/session-start.json`, (await readFile(resolve(root, 'source/runtime/claude-session-start.json'), 'utf8')).replaceAll('{{version}}', app.version));
   outputs.set(`${base}/scripts/oauth-helper.mjs`, await readFile(resolve(root, 'source/runtime/oauth-helper.mjs'), 'utf8'));
+  outputs.set(`${base}/scripts/recording-check.sh`, await readFile(resolve(root, 'source/runtime/recording-check.sh'), 'utf8'));
   const hashes = {};
   for (const skill of app.skills) {
     const markdown = (await readFile(resolve(root, `source/skills/${skill}/SKILL.md`), 'utf8')).replaceAll('{{version}}', app.version);
@@ -64,7 +71,7 @@ outputs.set('catalog.json',json({schemaVersion:1,repository:catalog.repository,p
 let different = false;
 const check = process.argv.includes('--check');
 // W5에서 이름이 바뀐 생성물만 정리한다. 설치된 사용자 캐시나 다른 제품은 건드리지 않는다.
-for (const path of ['plugins/doraft-wiki', 'server-resources/wiki/skills/setup-doraft-wiki', 'server-resources/wiki/skills/use-doraft-wiki']) {
+for (const path of ['plugins/doraft-wiki', 'server-resources/wiki/skills/setup-doraft-wiki', 'server-resources/wiki/skills/use-doraft-wiki', 'plugins/onidot/hooks/hooks.json']) {
   const destination = resolve(root, path);
   if (check) {
     try { await lstat(destination); process.stderr.write(`은퇴한 생성물: ${path}\n`); different = true; }
