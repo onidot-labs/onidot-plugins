@@ -10,7 +10,7 @@
     {
       "name": "onidot",
       "source": "./plugins/onidot",
-      "version": "0.15.5",
+      "version": "0.15.6",
       "description": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다."
     }
   ]

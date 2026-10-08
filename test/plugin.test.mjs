@@ -202,18 +202,25 @@ test('연결 스킬은 옛 주소 재연결·전용 오류 코드·마켓플레�
   }
 });
 
-test('Claude 패키지만 세션 시작 훅으로 onidot 기본 지침의 존재와 읽는 방법을 알린다', async () => {
+test('Claude와 Codex는 command 시작 및 완료 훅을 클라이언트별로 제공한다', async () => {
   const claude = await readJson('plugins/onidot/.claude-plugin/plugin.json');
   const codex = await readJson('plugins/onidot/.codex-plugin/plugin.json');
   assert.equal(claude.hooks, './claude/hooks.json');
-  assert.equal('hooks' in codex, false);
-  // Codex는 hooks/hooks.json만 자동 탐지하므로 그 경로를 만들지 않는다.
+  assert.equal(codex.hooks, './codex/hooks.json');
   await assert.rejects(readFile(new URL('plugins/onidot/hooks/hooks.json', root)), { code: 'ENOENT' });
+  const codexHooks = await readJson('plugins/onidot/codex/hooks.json');
+  for (const event of ['SessionStart', 'Stop']) {
+    const command = codexHooks.hooks[event][0].hooks[0];
+    assert.equal(command.type, 'command');
+    assert.ok(command.command.includes('PLUGIN_ROOT'));
+  }
+  assert.ok(codexHooks.hooks.Stop[0].hooks[0].command.includes('codex'));
   const hooks = await readJson('plugins/onidot/claude/hooks.json');
   const [entry] = hooks.hooks.SessionStart;
   assert.equal(entry.matcher, 'startup|resume|clear|compact');
   assert.equal(entry.hooks[0].type, 'command');
   assert.equal(entry.hooks[0].command, 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"');
+  assert.equal(hooks.hooks.Stop[0].hooks[0].command, 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/recording-check.sh" claude');
   const output = await readJson('plugins/onidot/claude/session-start.json');
   const version = (await readJson('source/wiki.json')).version;
   assert.equal(await readText('plugins/onidot/claude/session-start.json'), (await readText('source/runtime/claude-session-start.json')).replaceAll('{{version}}', version));
