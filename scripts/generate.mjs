@@ -41,11 +41,11 @@ for (const product of catalog.products) {
   // It lives outside hooks/hooks.json so Codex never auto-discovers it.
   outputs.set(`${base}/claude/hooks.json`, json({ hooks: { SessionStart: [{ matcher: 'startup|resume|clear|compact',
     hooks: [{ type: 'command', command: 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"' }] }] } }));
-  outputs.set(`${base}/claude/session-start.json`, await readFile(resolve(root, 'source/runtime/claude-session-start.json'), 'utf8'));
+  outputs.set(`${base}/claude/session-start.json`, (await readFile(resolve(root, 'source/runtime/claude-session-start.json'), 'utf8')).replaceAll('{{version}}', app.version));
   outputs.set(`${base}/scripts/oauth-helper.mjs`, await readFile(resolve(root, 'source/runtime/oauth-helper.mjs'), 'utf8'));
   const hashes = {};
   for (const skill of app.skills) {
-    const markdown = await readFile(resolve(root, `source/skills/${skill}/SKILL.md`), 'utf8');
+    const markdown = (await readFile(resolve(root, `source/skills/${skill}/SKILL.md`), 'utf8')).replaceAll('{{version}}', app.version);
     outputs.set(`${base}/skills/${skill}/SKILL.md`, markdown);
     outputs.set(`server-resources/${product.id}/skills/${skill}/SKILL.md`, markdown);
     hashes[`skills/${skill}/SKILL.md`] = createHash('sha256').update(markdown).digest('hex');

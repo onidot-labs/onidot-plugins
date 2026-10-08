@@ -51,7 +51,7 @@ codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
 codex plugin add onidot@onidot
 ```
 
-기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.4`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
+기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.5`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
 
 인스턴스는 플러그인과 별도로 등록한다.
 
@@ -84,7 +84,7 @@ export ONIDOT_APP_URL="$APP_URL"
 export ONIDOT_MCP_URL="$MCP_URL"
 # READ 연결이면 read scope만 요청한다. 승인 범위는 사람이 직접 선택한다.
 export ONIDOT_SCOPE='onidot:wiki:read offline_access'
-HELPER="${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.15.4/scripts/oauth-helper.mjs"
+HELPER="${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.15.5/scripts/oauth-helper.mjs"
 # 사람이 직접 로그인한다. headers는 비밀 헤더를 출력하므로 진단용으로 실행하지 않는다.
 node "$HELPER" login
 node "$HELPER" status

@@ -57,7 +57,7 @@ test('manifest·카탈로그·스킬·스크립트는 인스턴스 주소나 단
   }
   const codex = JSON.parse(await read('plugins/onidot/.codex-plugin/plugin.json'));
   assert.deepEqual(codex.mcpServers, {});
-  assert.equal(JSON.parse(await read('source/wiki.json')).version, '0.15.4');
+  assert.equal(JSON.parse(await read('source/wiki.json')).version, '0.15.5');
 });
 
 test('등록 안내는 별칭·URL·사람의 OAuth 단계와 실제 조회 검증을 제공한다', async () => {
