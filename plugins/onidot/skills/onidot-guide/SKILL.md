@@ -9,12 +9,16 @@ onidot은 사용자의 지식·결정·작업 기록 저장소다. 판단과 실
 
 1. `get_onidot_guide`를 한 번 호출해 onidot 기본 지침(`defaultGuide`)과 접근 가능한 Space 목록을 읽는다. Space를 정하기 전에 읽을 수 있다.
 2. 기본 지침의 "작업할 Space"에 따라 이번 일의 Space를 정하고, `get_assistant_context(spaceId)`로 그 Space의 활성 지침(`instructions`)을 읽는다.
-3. 도구 목록에 `get_onidot_guide`가 없으면(이전 버전 서버) `list_spaces`로 Space를 고르고 `get_assistant_context(spaceId)` 응답의 `defaultGuide`를 기본 지침으로 읽는다. 둘 다 없으면 기본 지침 없이 진행하고 그 사실을 알린다.
+3. 도구 목록에 `get_onidot_guide`가 없으면(클라이언트 목록 미갱신 또는 이전 버전 서버) `list_spaces`로 Space를 고르고 `get_assistant_context(spaceId)` 응답의 `defaultGuide`를 기본 지침으로 읽는다. 둘 다 없으면 기본 지침 없이 진행하고 그 사실을 알린다.
 4. 우선순위는 이번 대화의 사용자 지시 → 지금 쓰는 도구의 로컬 지침(AGENTS.md, CLAUDE.md 등) → 저장소 지침 → Space 지침 → onidot 기본 지침 순이다. 충돌하면 앞쪽을 따른다.
 5. 기본 지침의 작업할 Space·찾기·판단·배우기·이어가기·플레이북을 일에 적용한다. 문서 편집 절차는 `use-onidot`을 따른다.
 6. 적용 중인 지침을 물으면 로컬 지침과 함께 onidot 기본 지침·Space 지침도 답한다.
 7. 같은 세션에서 이미 읽었으면 다시 읽지 않는다. Space를 바꾸면 그 Space의 지침만 다시 읽는다.
 8. 이 onidot 플러그인 버전은 0.15.6입니다. `get_onidot_guide` 응답의 `updates`에 더 높은 `plugin.latest`나 새 서버 버전이 있으면 기본 지침의 업데이트 알림을 따른다.
+
+## 도구 목록 자동 점검
+
+시작·재개와 서버 업데이트/Unknown tool 때 bootstrap 응답의 `toolCatalog`를 현재 연결의 실제 전체 도구 목록과 비교한다. 이름 누락·동일 개수 교체·revision 변경은 `setup-onidot`의 갱신 절차로 처리한다. READ/module 범위, 부분 목록, 이름만 일치하는 상태를 구분하며 자동 갱신을 보장하지 않는다. Node가 있으면 `scripts/catalog-check.mjs`로 비교하고, 없으면 설치 없이 같은 절차를 수행한다. 연결 갱신 후 목록·실제 조회를 검증하고, 도구 누락을 구버전 서버로 단정하지 않는다.
 
 ## 문제 해결
 
