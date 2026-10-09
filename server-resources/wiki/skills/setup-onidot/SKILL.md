@@ -51,7 +51,7 @@ codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
 codex plugin add onidot@onidot
 ```
 
-기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.6`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
+기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.7`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
 
 인스턴스는 플러그인과 별도로 등록한다.
 
@@ -84,7 +84,7 @@ export ONIDOT_APP_URL="$APP_URL"
 export ONIDOT_MCP_URL="$MCP_URL"
 # READ 연결이면 read scope만 요청한다. 승인 범위는 사람이 직접 선택한다.
 export ONIDOT_SCOPE='onidot:wiki:read offline_access'
-HELPER="${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.15.6/scripts/oauth-helper.mjs"
+HELPER="${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.15.7/scripts/oauth-helper.mjs"
 # 사람이 직접 로그인한다. headers는 비밀 헤더를 출력하므로 진단용으로 실행하지 않는다.
 node "$HELPER" login
 node "$HELPER" status
@@ -138,7 +138,7 @@ ChatGPT 계정 사용자 지정 앱도 선택한 인스턴스의 공개 MCP_URL�
 
 ## 완료 hooks 확인
 
-- 플러그인 0.15.6의 완료 검사는 `oni recording-check --client claude|codex`를 사용한다. **이 기능이 포함된 oni와 함께 업데이트**한다(출시번호 미정). Node/Python 설치나 추가 LLM 호출이 필요하지 않다. oni 미설치·구버전·검사 실패이면 고정된 누락 확인 불가 안내를 보여 주며 중단하거나 저장 성공으로 판단하지 않는다. `onidot-guide`의 최종 답변 전 검토를 적용하고 `remember` 성공을 확인하지 못한 기록은 미저장으로 알린다.
+- 플러그인 0.15.7의 완료 검사는 `oni recording-check --client claude|codex`를 사용한다. **이 기능이 포함된 oni와 함께 업데이트**한다(출시번호 미정). Node/Python 설치나 추가 LLM 호출이 필요하지 않다. oni 미설치·구버전·검사 실패이면 고정된 누락 확인 불가 안내를 보여 주며 중단하거나 저장 성공으로 판단하지 않는다. `onidot-guide`의 최종 답변 전 검토를 적용하고 `remember` 성공을 확인하지 못한 기록은 미저장으로 알린다.
 - Claude Code는 기존 `claude/hooks.json`, Codex는 `codex/hooks.json`을 각 manifest에 명시하여 SessionStart와 Stop command를 실행한다. 양쪽에서 자동 탐지할 `hooks/hooks.json`은 생성하지 않아 중복 검사를 막는다. Codex는 `PLUGIN_ROOT`, Claude는 `CLAUDE_PLUGIN_ROOT`로 설치 경로를 읽는다.
 - Codex는 설치만으로 hooks를 신뢰하지 않는다. 사용자가 `/hooks`에서 현재 정의를 직접 검토하고 trust해야 한다. 변경한 정의에는 재검토가 필요하며 신뢰 절차를 우회하지 않는다. 사용자 설정 파일을 자동 수정하지 않는다.
 - hooks를 지원하지 않는 앱은 공통 지침만 적용한다. 실제 클라이언트 hook 실행과 저장 성공은 별도로 검증하며 설치·패키징 성공으로 대체하지 않는다. 대화 원문 전체나 비밀은 기록하지 않고 로컬 메모리로 대체 저장하지 않는다.
