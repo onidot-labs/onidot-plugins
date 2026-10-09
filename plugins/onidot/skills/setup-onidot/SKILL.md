@@ -51,7 +51,7 @@ codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
 codex plugin add onidot@onidot
 ```
 
-기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.6`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
+기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.7`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
 
 인스턴스는 플러그인과 별도로 등록한다.
 
@@ -84,7 +84,7 @@ export ONIDOT_APP_URL="$APP_URL"
 export ONIDOT_MCP_URL="$MCP_URL"
 # READ 연결이면 read scope만 요청한다. 승인 범위는 사람이 직접 선택한다.
 export ONIDOT_SCOPE='onidot:wiki:read offline_access'
-HELPER="${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.15.6/scripts/oauth-helper.mjs"
+HELPER="${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.15.7/scripts/oauth-helper.mjs"
 # 사람이 직접 로그인한다. headers는 비밀 헤더를 출력하므로 진단용으로 실행하지 않는다.
 node "$HELPER" login
 node "$HELPER" status
@@ -138,7 +138,30 @@ ChatGPT 계정 사용자 지정 앱도 선택한 인스턴스의 공개 MCP_URL�
 
 ## 완료 hooks 확인
 
-- 플러그인 0.15.6의 완료 검사는 `oni recording-check --client claude|codex`를 사용한다. **이 기능이 포함된 oni와 함께 업데이트**한다(출시번호 미정). Node/Python 설치나 추가 LLM 호출이 필요하지 않다. oni 미설치·구버전·검사 실패이면 고정된 누락 확인 불가 안내를 보여 주며 중단하거나 저장 성공으로 판단하지 않는다. `onidot-guide`의 최종 답변 전 검토를 적용하고 `remember` 성공을 확인하지 못한 기록은 미저장으로 알린다.
+- 플러그인 0.15.7의 완료 검사는 `oni recording-check --client claude|codex`를 사용한다. **이 기능이 포함된 oni와 함께 업데이트**한다(출시번호 미정). Node/Python 설치나 추가 LLM 호출이 필요하지 않다. oni 미설치·구버전·검사 실패이면 고정된 누락 확인 불가 안내를 보여 주며 중단하거나 저장 성공으로 판단하지 않는다. `onidot-guide`의 최종 답변 전 검토를 적용하고 `remember` 성공을 확인하지 못한 기록은 미저장으로 알린다.
 - Claude Code는 기존 `claude/hooks.json`, Codex는 `codex/hooks.json`을 각 manifest에 명시하여 SessionStart와 Stop command를 실행한다. 양쪽에서 자동 탐지할 `hooks/hooks.json`은 생성하지 않아 중복 검사를 막는다. Codex는 `PLUGIN_ROOT`, Claude는 `CLAUDE_PLUGIN_ROOT`로 설치 경로를 읽는다.
 - Codex는 설치만으로 hooks를 신뢰하지 않는다. 사용자가 `/hooks`에서 현재 정의를 직접 검토하고 trust해야 한다. 변경한 정의에는 재검토가 필요하며 신뢰 절차를 우회하지 않는다. 사용자 설정 파일을 자동 수정하지 않는다.
 - hooks를 지원하지 않는 앱은 공통 지침만 적용한다. 실제 클라이언트 hook 실행과 저장 성공은 별도로 검증하며 설치·패키징 성공으로 대체하지 않는다. 대화 원문 전체나 비밀은 기록하지 않고 로컬 메모리로 대체 저장하지 않는다.
+
+
+## 서버 업데이트 후 도구 목록 갱신
+
+서버 배포, 플러그인 설치, 계정 커넥터 목록은 독립 상태다. 서버는 기존 bootstrap 응답의 `toolCatalog`로 현재 credential에 허용된 전체 도구와 revision을 제공한다. 서버를 재시작하면 이전 프로세스 세션이 끝나므로 `notifications/tools/list_changed`만으로 기존 클라이언트 캐시가 갱신된다고 보장하지 않는다. SDK는 활성 연결 중 도구 등록 변경 알림을 지원하지만 호스트의 수신·재조회는 별도다.
+
+| 클라이언트 | 확인된 지원과 처리 |
+| --- | --- |
+| ChatGPT 사용자 지정 앱 / Codex 계정 앱 | ChatGPT 앱 설정의 **도구 새로 고침(Refresh apps/tools)**으로 도구·설명·서버 지침을 갱신한다. 계정 앱 자동 수신은 공식 문서에서 보장되지 않는다. 브라우저 도구가 있고 기존 권한 범위의 연결 복구가 승인돼 있으면 현재 사용자가 선택한 앱의 관리 화면에서 이름·MCP URL을 확인한 뒤 자동 조작한다. 이 화면의 위치와 ID는 사용자별로 찾으며 특정 계정을 하드코딩하지 않는다. 갱신 후 실제 노출 목록과 조회 성공을 확인한다. |
+| Codex native MCP | 공식 문서의 `/mcp`는 상태 확인이며 갱신 명령이라고 단정하지 않는다. 실제 버전의 연결 제어를 확인하고 지원되는 재연결을 사용한다. 자동 제어가 없으면 사용자에게 연결 상태 확인과 새 세션에서 검증을 안내한다. 기존 작업을 임의 종료하지 않는다. |
+| Claude Code | 설정 변경/도구 문제에 재시작 안내가 있지만 원격 도구 변경의 자동 갱신 보장은 확인되지 않았다. 현재 `/mcp` UI에서 지원되는 재연결을 확인하여 사용하고, 없으면 작업을 보존한 뒤 사용자에게 재시작/새 세션 검증을 안내한다. |
+| Claude Desktop | 로컬 확장 레지스트리의 재시작 안내를 원격 커넥터 자동 갱신 보장으로 해석하지 않는다. 현재 커넥터 설정의 지원되는 갱신 수단을 사용하고 실제 조회를 확인한다. |
+| Responses API 자체 통합 | 기존 `mcp_list_tools`가 문맥에 남으면 매 턴 다시 가져오지 않는다. 통합을 소유한 경우 이전 목록을 재사용하지 않는 새 discovery 요청을 구성하고 재수집한다. 일반 계정 앱에 이 API 제어가 있다고 가정하지 않는다. |
+
+사용자 조치가 필요한 경우 앱 이름·현재 MCP URL·누락 도구·확인 방법을 짧게 안내한다. OAuth 재승인·토큰 입력·권한 확대는 사람에게 맡긴다. 서버/플러그인만으로 모든 외부 클라이언트의 자동 갱신을 보장하지 않는다. 각 클라이언트의 실제 hot-refresh 지원은 버전별 런타임 검증 전에는 미검증이다.
+
+공식 근거: [ChatGPT custom MCP](https://developers.openai.com/api/docs/guides/custom-mcp-server), [Responses MCP 캐시](https://developers.openai.com/api/docs/guides/tools-connectors-mcp), [Codex MCP 상태](https://learn.chatgpt.com/docs/developer-commands), [Claude Code MCP](https://docs.anthropic.com/en/docs/claude-code/mcp), [MCP tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools). SDK가 협상한 프로토콜 버전의 알림 규칙을 적용하며 최신 문서의 subscriptions 동작을 구버전에 소급하지 않는다.
+
+### 목록 비교기 입력
+
+- Node가 이미 있는 환경에서는 설치 경로의 `scripts/catalog-check.mjs`에 JSON `{catalog: toolCatalog, observed: [{name, digest?}], complete: true, previousRevision?}`를 표준입력으로 전달한다. 이름은 현재 연결의 접두어만 제거한 원래 MCP 이름이다. 다른 연결의 도구를 합치지 않는다. digest는 이전 실제 수집·검증된 도구 계약에서만 가져오며 현재 서버 값을 observed로 복사하지 않는다. 출력 `refresh_required`는 갱신 필요, `names_match`는 이름만 일치, `current`는 제공된 digest까지 일치, `unverified`는 전체 목록 미확인, `unsupported`는 서버 진단 미지원이다. 종료 코드는 일치 0, 갱신 필요/미확인 2, 입력 오류 1이다. Node가 없으면 설치하지 않고 같은 비교를 직접 수행한다.
+
+현재 catalog는 현재 연결에서 실제 조회한 값이고 observed는 별도로 노출된 도구 목록이다. 이전에 검증한 revision은 같은 연결·권한 범위에서만 재사용한다. 도구 수를 고정하지 않고 READ/WRITE 및 모듈 범위의 차이를 반영한다. toolCatalog가 없거나 전체 목록을 확인할 수 없으면 미지원/미검증이며 정상으로 판정하지 않는다.

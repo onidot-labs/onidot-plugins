@@ -50,6 +50,7 @@ for (const product of catalog.products) {
   outputs.set(`${base}/claude/session-start.json`, (await readFile(resolve(root, 'source/runtime/claude-session-start.json'), 'utf8')).replaceAll('{{version}}', app.version));
   outputs.set(`${base}/scripts/oauth-helper.mjs`, await readFile(resolve(root, 'source/runtime/oauth-helper.mjs'), 'utf8'));
   outputs.set(`${base}/scripts/recording-check.sh`, await readFile(resolve(root, 'source/runtime/recording-check.sh'), 'utf8'));
+  outputs.set(`${base}/scripts/catalog-check.mjs`, await readFile(resolve(root, 'source/runtime/catalog-check.mjs'), 'utf8'));
   const hashes = {};
   for (const skill of app.skills) {
     const markdown = (await readFile(resolve(root, `source/skills/${skill}/SKILL.md`), 'utf8')).replaceAll('{{version}}', app.version);
