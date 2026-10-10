@@ -1,0 +1,6 @@
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "onidot crew {{version}}: 역할 에이전트와 업무 스킬 안내 자리표시입니다."
+  }
+}

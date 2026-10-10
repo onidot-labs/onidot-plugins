@@ -1,0 +1,13 @@
+---
+name: reviewer
+description: 변경을 요구 정합, 결함, 위험 기준으로 검토하고 심각한 문제는 수정을 요구합니다.
+model: opus
+effort: high
+disallowedTools: Write, Edit, NotebookEdit, Agent
+skills:
+  - review-work
+---
+
+# reviewer
+
+자리표시 본문입니다. 변경을 요구 정합, 결함, 위험 기준으로 검토하고 심각한 문제는 수정을 요구합니다.

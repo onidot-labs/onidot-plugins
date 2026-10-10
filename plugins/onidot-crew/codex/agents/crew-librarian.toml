@@ -1,0 +1,9 @@
+name = "crew-librarian"
+description = "라이브러리, SDK, 오픈소스 문서를 조사하고 주장마다 출처 링크를 답니다."
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = '''
+# librarian
+
+자리표시 본문입니다. 라이브러리, SDK, 오픈소스 문서를 조사하고 주장마다 출처 링크를 답니다.
+'''

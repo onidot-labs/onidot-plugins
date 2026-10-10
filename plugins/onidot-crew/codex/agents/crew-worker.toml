@@ -1,0 +1,9 @@
+name = "crew-worker"
+description = "일반 구현 단계를 맡습니다."
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+developer_instructions = '''
+# worker
+
+자리표시 본문입니다. 일반 구현 단계를 맡습니다.
+'''

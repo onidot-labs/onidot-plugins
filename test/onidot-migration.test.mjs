@@ -22,7 +22,7 @@ test('onidot 설치 이름과 서버 반입 product ID를 유지하고 인스턴
   assert.equal(metadataUrl('https://remote.example.invalid/wiki'), 'https://remote.example.invalid/.well-known/oauth-protected-resource/wiki');
   const codex = await json('plugins/onidot/.codex-plugin/plugin.json');
   assert.deepEqual(codex.mcpServers, {});
-  assert.deepEqual(await readdir(new URL('../plugins/', import.meta.url)), ['onidot']);
+  assert.deepEqual((await readdir(new URL('../plugins/', import.meta.url))).sort(), ['onidot', 'onidot-crew']);
 });
 
 test('이전 설치는 새 별칭의 연결을 먼저 검증한 뒤 교체하도록 안내한다', async () => {
@@ -46,7 +46,7 @@ test('옛 issuer와 resource는 갱신 요청 없이 재로그인을 요구하�
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('재생성과 패키징은 은퇴한 생성물을 제거하고 onidot ZIP만 배포한다', async () => {
+test('재생성과 패키징은 은퇴한 생성물을 제거하고 onidot·onidot-crew ZIP만 배포한다', async () => {
   const { mkdtemp, rm, cp, mkdir, writeFile } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
@@ -66,7 +66,7 @@ test('재생성과 패키징은 은퇴한 생성물을 제거하고 onidot ZIP�
     await writeFile(join(dir, 'dist/doraft-wiki-0.13.0.zip'), 'retired fixture');
     await writeFile(join(dir, 'dist/onidot-0.13.0.zip'), 'retired instance-bound fixture');
     execFileSync(process.execPath, ['scripts/package.mjs'], { cwd: dir });
-    assert.deepEqual((await readdir(join(dir, 'dist'))).sort(), ['SHA256SUMS', 'onidot-0.15.7.zip']);
+    assert.deepEqual((await readdir(join(dir, 'dist'))).sort(), ['SHA256SUMS', 'onidot-0.15.7.zip', 'onidot-crew-0.1.0.zip']);
     const archive = join(dir, 'dist/onidot-0.15.7.zip');
     const files = execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' });
     for (const path of ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', 'skills/setup-onidot/SKILL.md', 'skills/use-onidot/SKILL.md', 'scripts/oauth-helper.mjs', 'scripts/recording-check.sh', 'claude/hooks.json', 'claude/session-start.json', 'codex/hooks.json']) assert.ok(files.split('\n').includes(path), path);
@@ -77,6 +77,11 @@ test('재생성과 패키징은 은퇴한 생성물을 제거하고 onidot ZIP�
     assert.equal(manifest.name, 'onidot');
     assert.deepEqual(manifest.mcpServers, {});
     const hash = createHash('sha256').update(await readFile(archive)).digest('hex');
-    assert.equal(await readFile(join(dir, 'dist/SHA256SUMS'), 'utf8'), `${hash}  onidot-0.15.7.zip\n`);
+    const crewArchive = join(dir, 'dist/onidot-crew-0.1.0.zip');
+    const crewFiles = execFileSync('unzip', ['-Z1', crewArchive], { encoding: 'utf8' }).split('\n');
+    for (const path of ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', 'skills/plan/SKILL.md', 'agents/scoper.md', 'codex/agents/crew-scoper.toml', 'claude/hooks.json', 'claude/session-start.json', 'codex/hooks.json']) assert.ok(crewFiles.includes(path), path);
+    assert.ok(!crewFiles.some((path) => path.startsWith('scripts/')));
+    const crewHash = createHash('sha256').update(await readFile(crewArchive)).digest('hex');
+    assert.equal(await readFile(join(dir, 'dist/SHA256SUMS'), 'utf8'), `${hash}  onidot-0.15.7.zip\n${crewHash}  onidot-crew-0.1.0.zip\n`);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

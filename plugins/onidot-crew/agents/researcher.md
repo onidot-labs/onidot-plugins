@@ -1,0 +1,11 @@
+---
+name: researcher
+description: 시장, 경쟁, 사례처럼 개발 밖의 주제를 조사하고 주장별 출처와 확인 범위를 밝힙니다.
+model: sonnet
+effort: medium
+disallowedTools: Write, Edit, NotebookEdit, Bash, Agent
+---
+
+# researcher
+
+자리표시 본문입니다. 시장, 경쟁, 사례처럼 개발 밖의 주제를 조사하고 주장별 출처와 확인 범위를 밝힙니다.

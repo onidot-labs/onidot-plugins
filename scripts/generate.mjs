@@ -9,6 +9,59 @@ const json = value => JSON.stringify(value, null, 2) + '\n';
 const outputs = new Map();
 const codexEntries = [], claudeEntries = [], released = [];
 const ids = new Set(), names = new Set();
+// Product-specific outputs. Wiki keeps its OAuth helper, recording check and server resources.
+const profiles = {
+  wiki: { skills: 'source/skills', sessionStart: 'source/runtime/claude-session-start.json',
+    scripts: ['oauth-helper.mjs', 'recording-check.sh', 'catalog-check.mjs'], recordingCheck: true, serverResources: true },
+  crew: { skills: 'source/crew/skills', sessionStart: 'source/crew/runtime/session-start.json',
+    scripts: [], recordingCheck: false, serverResources: false, agents: 'source/crew/agents' }
+};
+const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const CODEX_EFFORTS = ['low', 'medium', 'high', 'xhigh'];
+const CODEX_SANDBOXES = ['read-only', 'workspace-write'];
+const yamlScalar = value => /^[\s'"&*!|>%@`{}\[\],?#-]|[:#]\s|:$|\s$/.test(value) ? JSON.stringify(value) : value;
+const stringList = (value, label) => {
+  if (!Array.isArray(value) || !value.length || value.some(v => typeof v !== 'string' || !/^[A-Za-z][A-Za-z0-9_:*().-]*$/.test(v)))
+    throw Error(`Invalid agents: ${label} must be a non-empty string array`);
+  return value;
+};
+async function agentOutputs(app, productId, dir) {
+  const files = [], seen = new Set();
+  for (const agent of app.agents) {
+    const id = agent?.id;
+    if (typeof id !== 'string' || !/^[a-z][a-z0-9-]*$/.test(id) || seen.has(id)) throw Error(`Invalid agents: id ${id}`);
+    seen.add(id);
+    const fail = reason => { throw Error(`Invalid agents: ${id} ${reason}`); };
+    if (typeof agent.description !== 'string' || !agent.description.trim() || /[\r\n]/.test(agent.description)) fail('description');
+    const claude = agent.claude ?? {}, codex = agent.codex ?? {};
+    if (!CLAUDE_MODELS.includes(claude.model)) fail('claude.model');
+    if (!CLAUDE_EFFORTS.includes(claude.effort)) fail('claude.effort');
+    if (claude.tools !== undefined && claude.disallowedTools !== undefined) fail('tools and disallowedTools together');
+    if (claude.tools !== undefined) stringList(claude.tools, `${id} claude.tools`);
+    if (claude.disallowedTools !== undefined) stringList(claude.disallowedTools, `${id} claude.disallowedTools`);
+    if (claude.skills !== undefined) {
+      if (!Array.isArray(claude.skills) || claude.skills.some(s => !app.skills.includes(s))) fail('claude.skills references unknown skill');
+    }
+    if (!CODEX_EFFORTS.includes(codex.reasoningEffort)) fail('codex.reasoningEffort');
+    if (!CODEX_SANDBOXES.includes(codex.sandboxMode)) fail('codex.sandboxMode');
+    const body = await readFile(resolve(root, dir, `${id}.md`), 'utf8').catch(e => { if (e.code === 'ENOENT') fail('body missing'); throw e; });
+    if (!body.trim()) fail('body empty');
+    if (body.includes("'''")) fail("body contains '''");
+    if (/[\x00-\x08\x0b-\x1f\x7f]/.test(body)) fail('body contains control characters');
+    const text = body.replaceAll('{{version}}', app.version).trim() + '\n';
+    const front = [`name: ${id}`, `description: ${yamlScalar(agent.description)}`, `model: ${claude.model}`, `effort: ${claude.effort}`];
+    if (claude.tools) front.push(`tools: ${claude.tools.join(', ')}`);
+    if (claude.disallowedTools) front.push(`disallowedTools: ${claude.disallowedTools.join(', ')}`);
+    if (claude.skills?.length) front.push('skills:', ...claude.skills.map(s => `  - ${s}`));
+    files.push([`agents/${id}.md`, `---\n${front.join('\n')}\n---\n\n${text}`]);
+    // Codex inherits the parent model; only effort and sandbox are pinned per role.
+    files.push([`codex/agents/${productId}-${id}.toml`, [`name = ${JSON.stringify(`${productId}-${id}`)}`,
+      `description = ${JSON.stringify(agent.description)}`, `model_reasoning_effort = ${JSON.stringify(codex.reasoningEffort)}`,
+      `sandbox_mode = ${JSON.stringify(codex.sandboxMode)}`, `developer_instructions = '''`, `${text}'''`, ''].join('\n')]);
+  }
+  return files;
+}
 if (catalog.schemaVersion !== 1 || Object.hasOwn(catalog, 'issuer') || Object.hasOwn(catalog, 'mcpOrigin')) throw Error('Invalid instance-bound catalog');
 for (const product of catalog.products) {
   if (!/^[a-z][a-z0-9-]*$/.test(product.id) || ids.has(product.id)) throw Error('Invalid/duplicate product id');
@@ -24,6 +77,8 @@ for (const product of catalog.products) {
   if (!/^\d+\.\d+\.\d+$/.test(app.version) || !app.displayName || !app.skills?.length) throw Error('Incomplete released product');
   if (new Set(app.skills).size !== app.skills.length || app.skills.some(s => !/^[a-z][a-z0-9-]*$/.test(s))) throw Error('Invalid skills');
   names.add(app.name);
+  const profile = profiles[product.id];
+  if (!profile) throw Error(`Invalid product profile: ${product.id}`);
   const base = `plugins/${app.name}`;
   const common = { name: app.name, version: app.version, description: app.description,
     author: { name: 'onidot', url: 'https://onidot.com' }, homepage: app.guide,
@@ -38,29 +93,38 @@ for (const product of catalog.products) {
   // Claude account connector owns MCP. A root .mcp.json would silently attach a second server in Code.
   outputs.set(`${base}/.claude-plugin/plugin.json`, json({ ...common, hooks: './claude/hooks.json' }));
   // Both clients declare their own path; no shared default hook file is generated.
-  outputs.set(`${base}/claude/hooks.json`, json({ hooks: { SessionStart: [{ matcher: 'startup|resume|clear|compact',
-    hooks: [{ type: 'command', command: 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"' }] }],
-    Stop: [{ hooks: [{ type: 'command', command: 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/recording-check.sh" claude' }] }] } }));
-  outputs.set(`${base}/codex/hooks.json`, json({ hooks: {
-    SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: [{ type: 'command',
-      command: 'cat "${PLUGIN_ROOT}/claude/session-start.json"' }] }],
-    Stop: [{ hooks: [{ type: 'command',
-      command: 'sh "${PLUGIN_ROOT}/scripts/recording-check.sh" codex' }] }]
-  } }));
-  outputs.set(`${base}/claude/session-start.json`, (await readFile(resolve(root, 'source/runtime/claude-session-start.json'), 'utf8')).replaceAll('{{version}}', app.version));
-  outputs.set(`${base}/scripts/oauth-helper.mjs`, await readFile(resolve(root, 'source/runtime/oauth-helper.mjs'), 'utf8'));
-  outputs.set(`${base}/scripts/recording-check.sh`, await readFile(resolve(root, 'source/runtime/recording-check.sh'), 'utf8'));
-  outputs.set(`${base}/scripts/catalog-check.mjs`, await readFile(resolve(root, 'source/runtime/catalog-check.mjs'), 'utf8'));
+  const claudeHooks = { SessionStart: [{ matcher: 'startup|resume|clear|compact',
+    hooks: [{ type: 'command', command: 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"' }] }] };
+  const codexHooks = { SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: [{ type: 'command',
+    command: 'cat "${PLUGIN_ROOT}/claude/session-start.json"' }] }] };
+  if (profile.recordingCheck) {
+    claudeHooks.Stop = [{ hooks: [{ type: 'command', command: 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/recording-check.sh" claude' }] }];
+    codexHooks.Stop = [{ hooks: [{ type: 'command', command: 'sh "${PLUGIN_ROOT}/scripts/recording-check.sh" codex' }] }];
+  }
+  outputs.set(`${base}/claude/hooks.json`, json({ hooks: claudeHooks }));
+  outputs.set(`${base}/codex/hooks.json`, json({ hooks: codexHooks }));
+  const sessionStart = (await readFile(resolve(root, profile.sessionStart), 'utf8')).replaceAll('{{version}}', app.version);
+  if (JSON.parse(sessionStart).hookSpecificOutput?.hookEventName !== 'SessionStart') throw Error('Invalid session start context');
+  outputs.set(`${base}/claude/session-start.json`, sessionStart);
+  for (const script of profile.scripts)
+    outputs.set(`${base}/scripts/${script}`, await readFile(resolve(root, `source/runtime/${script}`), 'utf8'));
   const hashes = {};
   for (const skill of app.skills) {
-    const markdown = (await readFile(resolve(root, `source/skills/${skill}/SKILL.md`), 'utf8')).replaceAll('{{version}}', app.version);
+    const markdown = (await readFile(resolve(root, `${profile.skills}/${skill}/SKILL.md`), 'utf8')).replaceAll('{{version}}', app.version);
     outputs.set(`${base}/skills/${skill}/SKILL.md`, markdown);
-    outputs.set(`server-resources/${product.id}/skills/${skill}/SKILL.md`, markdown);
-    hashes[`skills/${skill}/SKILL.md`] = createHash('sha256').update(markdown).digest('hex');
+    if (profile.serverResources) {
+      outputs.set(`server-resources/${product.id}/skills/${skill}/SKILL.md`, markdown);
+      hashes[`skills/${skill}/SKILL.md`] = createHash('sha256').update(markdown).digest('hex');
+    }
   }
-  outputs.set(`server-resources/${product.id}/manifest.json`, json({schemaVersion:1, product:product.id,
-    name:app.name, displayName:app.displayName, version:app.version, repository:catalog.repository,
-    files:hashes}));
+  if (profile.serverResources)
+    outputs.set(`server-resources/${product.id}/manifest.json`, json({schemaVersion:1, product:product.id,
+      name:app.name, displayName:app.displayName, version:app.version, repository:catalog.repository,
+      files:hashes}));
+  if (profile.agents) {
+    if (!Array.isArray(app.agents) || !app.agents.length) throw Error('Invalid agents: missing');
+    for (const [path, content] of await agentOutputs(app, product.id, profile.agents)) outputs.set(`${base}/${path}`, content);
+  }
   codexEntries.push({name:app.name, source:{source:'local',path:`./${base}`},
     policy:{installation:'AVAILABLE',authentication:'ON_USE'},category:'Productivity'});
   claudeEntries.push({name:app.name,source:`./${base}`,version:app.version,description:app.description});

@@ -2,6 +2,8 @@
 
 onidot-studio AI 플러그인 `onidot@onidot`의 원본·생성기·설치 카탈로그·패키징을 소유한다. 서버는 onidot-studio, 공통 인증은 onidot-platform이 소유한다. 작업 기준과 결과는 [W1-22P](https://labs.onidot.com/w/0rsx2c7fbz8qm/pages/0rtx2argyggsq)에 있다.
 
+두 번째 제품 `onidot-crew@onidot`(표시 이름 onidot crew)는 계획·위임·검증·재개를 돕는 역할 서브에이전트와 업무 스킬, SessionStart 안내 훅을 제공한다. MCP 연결과 서버 반입이 없으며 Claude Code 서브에이전트(`agents/`)와 Codex 에이전트(`codex/agents/crew-*.toml`)를 함께 생성한다.
+
 ## 설치와 연결
 
 현재 패키지 버전은 **0.15.7**이다. 플러그인은 인스턴스 주소를 고정하지 않는다. MCP 연결은 클라이언트 설정에 `onidot-<별칭>`으로 등록한다. 집 셀프호스팅 `onidot-dev`·회사 로컬 `onidot-work`는 예시이며 URL은 사용자가 선택한다.
@@ -34,6 +36,7 @@ Codex의 새 hooks는 사용자가 `/hooks`에서 정의를 검토하고 trust�
 - `source/products.json`, `source/wiki.json`: 제품 ID `wiki`, 설치 이름 `onidot`, 버전과 안내 정보의 정본이다. 인스턴스 URL을 넣지 않는다.
 - `source/skills/`: 배포 스킬의 유일한 원본이다. 서버의 활성 지침은 manifest/context로 조회한다.
 - `source/runtime/`: 연결별로 매개변수화한 선택적 OAuth helper다.
+- `source/crew.json`, `source/crew/`: onidot-crew의 정본이다. 역할 메타데이터는 `crew.json`의 `agents`, 역할 본문은 `crew/agents/<id>.md`(front matter 없음), 스킬은 `crew/skills/<name>/SKILL.md`, 세션 안내는 `crew/runtime/session-start.json`에 둔다. 생성기는 모델·effort·도구·스킬 참조와 본문의 `'''`를 검증한다.
 - `scripts/`, `test/`: 생성·패키징·진단과 계약 시험을 둔다.
 - `plugins/`, `server-resources/`, `catalog.json`, `.agents/plugins/`, `.claude-plugin/`: `npm run generate`의 생성물이다. 직접 수정하지 않는다. 서버는 고정 commit·SHA256을 검증해 스킬을 반입한다.
 - `dist/`: `npm run package`가 생성하는 ZIP·SHA256SUMS이며 git에서 제외한다.
@@ -44,7 +47,7 @@ npm test
 npm run package
 ```
 
-이 저장소에는 onidot 제품만 둔다. 다른 제품의 planned 항목을 설치 목록에 넣지 않고 클라이언트별 플러그인 이름 변형을 만들지 않는다. 생성기는 레포 외부에 쓰지 않는다. 새 배포본을 검증하기 전 기존 사용자 설치를 변경하지 않는다.
+이 저장소에는 onidot과 onidot-crew 두 제품만 둔다. 다른 제품의 planned 항목을 설치 목록에 넣지 않고 클라이언트별 플러그인 이름 변형을 만들지 않는다. 생성기는 레포 외부에 쓰지 않는다. 새 배포본을 검증하기 전 기존 사용자 설치를 변경하지 않는다.
 
 ## 로컬 릴리스 검증
 

@@ -1,0 +1,11 @@
+---
+name: explorer
+description: 파일, 심볼, 설정의 위치를 여러 각도로 찾습니다.
+model: haiku
+effort: low
+tools: Read, Grep, Glob
+---
+
+# explorer
+
+자리표시 본문입니다. 파일, 심볼, 설정의 위치를 여러 각도로 찾습니다.

@@ -1,0 +1,9 @@
+name = "crew-reviewer"
+description = "변경을 요구 정합, 결함, 위험 기준으로 검토하고 심각한 문제는 수정을 요구합니다."
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = '''
+# reviewer
+
+자리표시 본문입니다. 변경을 요구 정합, 결함, 위험 기준으로 검토하고 심각한 문제는 수정을 요구합니다.
+'''

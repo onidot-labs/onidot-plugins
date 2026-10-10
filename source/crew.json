@@ -1,0 +1,354 @@
+{
+  "name": "onidot-crew",
+  "version": "0.1.0",
+  "displayName": "onidot crew",
+  "description": "계획·위임·검증·재개를 돕는 역할 에이전트와 업무 스킬을 제공합니다.",
+  "shortDescription": "계획·위임·검증 역할 에이전트와 업무 스킬",
+  "guide": "https://onidot.com",
+  "defaultPrompt": [
+    "이 기능을 계획부터 검증까지 역할 에이전트로 나눠 진행해 주세요.",
+    "중단된 작업을 이어서 남은 단계를 재개해 주세요."
+  ],
+  "skills": [
+    "plan",
+    "run",
+    "research",
+    "verify",
+    "resume",
+    "delegate",
+    "explore-domain",
+    "spec-first",
+    "tdd",
+    "debugging",
+    "review-work",
+    "frontend",
+    "plain-writing"
+  ],
+  "agents": [
+    {
+      "id": "scoper",
+      "description": "계획 전에 요청의 의도, 모호한 점, 빠진 전제, 자주 틀리는 지점을 분석하고 수용 기준 초안을 만듭니다.",
+      "claude": {
+        "model": "opus",
+        "effort": "high",
+        "disallowedTools": [
+          "Write",
+          "Edit",
+          "NotebookEdit",
+          "Bash",
+          "Agent"
+        ],
+        "skills": [
+          "explore-domain"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "high",
+        "sandboxMode": "read-only"
+      }
+    },
+    {
+      "id": "planner",
+      "description": "단계, 의존 관계, 역할, 완료 기준, 작업 묶음을 갖춘 계획서를 만듭니다.",
+      "claude": {
+        "model": "opus",
+        "effort": "high",
+        "disallowedTools": [
+          "Write",
+          "Edit",
+          "NotebookEdit",
+          "Bash",
+          "Agent"
+        ],
+        "skills": [
+          "spec-first"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "high",
+        "sandboxMode": "read-only"
+      }
+    },
+    {
+      "id": "plan-reviewer",
+      "description": "계획이 참조한 파일과 결정이 실제로 있는지, 바로 착수할 수 있는지 확인하고 막는 요인만 판정합니다.",
+      "claude": {
+        "model": "opus",
+        "effort": "medium",
+        "disallowedTools": [
+          "Write",
+          "Edit",
+          "NotebookEdit",
+          "Bash",
+          "Agent"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "medium",
+        "sandboxMode": "read-only"
+      }
+    },
+    {
+      "id": "advisor",
+      "description": "고난도 설계와 디버깅을 자문하며, 수정이 두 번 실패했거나 보안·성능 우려가 있을 때 씁니다.",
+      "claude": {
+        "model": "opus",
+        "effort": "xhigh",
+        "disallowedTools": [
+          "Write",
+          "Edit",
+          "NotebookEdit",
+          "Bash",
+          "Agent"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "xhigh",
+        "sandboxMode": "read-only"
+      }
+    },
+    {
+      "id": "explorer",
+      "description": "파일, 심볼, 설정의 위치를 여러 각도로 찾습니다.",
+      "claude": {
+        "model": "haiku",
+        "effort": "low",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "low",
+        "sandboxMode": "read-only"
+      }
+    },
+    {
+      "id": "mapper",
+      "description": "코드 흐름, 모듈 관계, 영향 범위, 수정 지점을 분석합니다.",
+      "claude": {
+        "model": "sonnet",
+        "effort": "medium",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob",
+          "Bash"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "medium",
+        "sandboxMode": "read-only"
+      }
+    },
+    {
+      "id": "librarian",
+      "description": "라이브러리, SDK, 오픈소스 문서를 조사하고 주장마다 출처 링크를 답니다.",
+      "claude": {
+        "model": "sonnet",
+        "effort": "medium",
+        "disallowedTools": [
+          "Write",
+          "Edit",
+          "NotebookEdit",
+          "Bash",
+          "Agent"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "medium",
+        "sandboxMode": "read-only"
+      }
+    },
+    {
+      "id": "researcher",
+      "description": "시장, 경쟁, 사례처럼 개발 밖의 주제를 조사하고 주장별 출처와 확인 범위를 밝힙니다.",
+      "claude": {
+        "model": "sonnet",
+        "effort": "medium",
+        "disallowedTools": [
+          "Write",
+          "Edit",
+          "NotebookEdit",
+          "Bash",
+          "Agent"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "medium",
+        "sandboxMode": "read-only"
+      }
+    },
+    {
+      "id": "worker-quick",
+      "description": "한두 파일에 걸친 작고 분명한 수정을 합니다.",
+      "claude": {
+        "model": "sonnet",
+        "effort": "low",
+        "disallowedTools": [
+          "Agent"
+        ],
+        "skills": [
+          "tdd"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "low",
+        "sandboxMode": "workspace-write"
+      }
+    },
+    {
+      "id": "worker",
+      "description": "일반 구현 단계를 맡습니다.",
+      "claude": {
+        "model": "sonnet",
+        "effort": "medium",
+        "disallowedTools": [
+          "Agent"
+        ],
+        "skills": [
+          "tdd"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "medium",
+        "sandboxMode": "workspace-write"
+      }
+    },
+    {
+      "id": "worker-deep",
+      "description": "동시성, 마이그레이션, 인증처럼 응집되고 어려운 구현을 맡습니다.",
+      "claude": {
+        "model": "opus",
+        "effort": "high",
+        "disallowedTools": [
+          "Agent"
+        ],
+        "skills": [
+          "tdd",
+          "spec-first"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "high",
+        "sandboxMode": "workspace-write"
+      }
+    },
+    {
+      "id": "designer",
+      "description": "화면 설계와 UI 구현을 맡고 기존 디자인 시스템을 보존합니다.",
+      "claude": {
+        "model": "sonnet",
+        "effort": "high",
+        "disallowedTools": [
+          "Agent"
+        ],
+        "skills": [
+          "frontend"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "high",
+        "sandboxMode": "workspace-write"
+      }
+    },
+    {
+      "id": "writer",
+      "description": "문서, README, 런북, 결정 기록을 씁니다.",
+      "claude": {
+        "model": "sonnet",
+        "effort": "medium",
+        "disallowedTools": [
+          "Agent"
+        ],
+        "skills": [
+          "plain-writing"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "medium",
+        "sandboxMode": "workspace-write"
+      }
+    },
+    {
+      "id": "debugger",
+      "description": "원인을 모르는 실패의 근본 원인을 규명합니다.",
+      "claude": {
+        "model": "opus",
+        "effort": "high",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob",
+          "Bash"
+        ],
+        "skills": [
+          "debugging"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "high",
+        "sandboxMode": "workspace-write"
+      }
+    },
+    {
+      "id": "reviewer",
+      "description": "변경을 요구 정합, 결함, 위험 기준으로 검토하고 심각한 문제는 수정을 요구합니다.",
+      "claude": {
+        "model": "opus",
+        "effort": "high",
+        "disallowedTools": [
+          "Write",
+          "Edit",
+          "NotebookEdit",
+          "Agent"
+        ],
+        "skills": [
+          "review-work"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "high",
+        "sandboxMode": "read-only"
+      }
+    },
+    {
+      "id": "qa",
+      "description": "시험, 린트, 빌드, 실제 시나리오를 실행해 증거를 모으며 파일은 고치지 않습니다.",
+      "claude": {
+        "model": "sonnet",
+        "effort": "medium",
+        "disallowedTools": [
+          "Write",
+          "Edit",
+          "NotebookEdit",
+          "Agent"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "medium",
+        "sandboxMode": "workspace-write"
+      }
+    },
+    {
+      "id": "gate",
+      "description": "실행, 검토, QA 결과를 다시 감사해 증거 없는 성공 주장을 미검증으로 돌리는 최종 게이트입니다.",
+      "claude": {
+        "model": "sonnet",
+        "effort": "low",
+        "disallowedTools": [
+          "Write",
+          "Edit",
+          "NotebookEdit",
+          "Bash",
+          "Agent"
+        ]
+      },
+      "codex": {
+        "reasoningEffort": "low",
+        "sandboxMode": "read-only"
+      }
+    }
+  ]
+}

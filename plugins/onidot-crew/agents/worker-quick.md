@@ -1,0 +1,13 @@
+---
+name: worker-quick
+description: 한두 파일에 걸친 작고 분명한 수정을 합니다.
+model: sonnet
+effort: low
+disallowedTools: Agent
+skills:
+  - tdd
+---
+
+# worker-quick
+
+자리표시 본문입니다. 한두 파일에 걸친 작고 분명한 수정을 합니다.
