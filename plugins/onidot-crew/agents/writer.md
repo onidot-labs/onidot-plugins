@@ -1,11 +1,11 @@
 ---
 name: writer
-description: 문서, README, 런북, 결정 기록을 씁니다.
+description: "문서, README, 런북, 결정 기록을 씁니다."
 model: sonnet
 effort: medium
 disallowedTools: Agent
 skills:
-  - plain-writing
+  - onidot-crew:plain-writing
 ---
 
 # 문서 작성자 (writer)

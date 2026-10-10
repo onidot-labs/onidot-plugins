@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, rm, lstat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm, lstat, readdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const catalog = JSON.parse(await readFile(resolve(root, 'source/products.json'), 'utf8'));
 const json = value => JSON.stringify(value, null, 2) + '\n';
 const outputs = new Map();
-const codexEntries = [], claudeEntries = [], released = [];
+const codexEntries = [], claudeEntries = [], released = [], managedDirs = [];
 const ids = new Set(), names = new Set();
 // Product-specific outputs. Wiki keeps its OAuth helper, recording check and server resources.
 const profiles = {
@@ -15,13 +15,17 @@ const profiles = {
     scripts: ['oauth-helper.mjs', 'recording-check.sh', 'catalog-check.mjs'], recordingCheck: true, serverResources: true },
   crew: { skills: 'source/crew/skills', sessionStart: 'source/crew/runtime/session-start.json',
     scripts: ['codex-agents.mjs'], scriptsDir: 'source/crew/runtime', recordingCheck: false, serverResources: false, agents: 'source/crew/agents',
-    agentsCommon: 'source/crew/agents-common.md' }
+    agentsCommon: 'source/crew/agents-common.md',
+    // These directories hold only generated files; anything not generated this run is a leftover.
+    managedDirs: ['agents', 'codex/agents', 'skills'] }
 };
 const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const CODEX_EFFORTS = ['low', 'medium', 'high', 'xhigh'];
 const CODEX_SANDBOXES = ['read-only', 'workspace-write'];
-const yamlScalar = value => /^[\s'"&*!|>%@`{}\[\],?#-]|[:#]\s|:$|\s$/.test(value) ? JSON.stringify(value) : value;
+const AGENT_KEYS = { agent: ['id', 'description', 'claude', 'codex'], claude: ['model', 'effort', 'tools', 'disallowedTools', 'skills'],
+  codex: ['reasoningEffort', 'sandboxMode'] };
+const WRITE_TOOLS = ['Write', 'Edit', 'NotebookEdit'];
 const stringList = (value, label) => {
   if (!Array.isArray(value) || !value.length || value.some(v => typeof v !== 'string' || !/^[A-Za-z][A-Za-z0-9_:*().-]*$/.test(v)))
     throw Error(`Invalid agents: ${label} must be a non-empty string array`);
@@ -37,11 +41,18 @@ async function agentOutputs(app, productId, dir, commonPath) {
     if (typeof id !== 'string' || !/^[a-z][a-z0-9-]*$/.test(id) || seen.has(id)) throw Error(`Invalid agents: id ${id}`);
     seen.add(id);
     const fail = reason => { throw Error(`Invalid agents: ${id} ${reason}`); };
-    if (typeof agent.description !== 'string' || !agent.description.trim() || /[\r\n]/.test(agent.description)) fail('description');
+    // Control characters and lone surrogates make the TOML string invalid.
+    if (typeof agent.description !== 'string' || !agent.description.trim() || /[\x00-\x1f\x7f]/.test(agent.description) || /\p{Cs}/u.test(agent.description)) fail('description');
     const claude = agent.claude ?? {}, codex = agent.codex ?? {};
+    // A misspelled key would silently drop a permission, so unknown keys are rejected.
+    for (const [label, value] of [['agent', agent], ['claude', claude], ['codex', codex]]) {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) fail(`${label} must be an object`);
+      for (const key of Object.keys(value)) if (!AGENT_KEYS[label].includes(key)) fail(`${label} unknown key ${key}`);
+    }
     if (!CLAUDE_MODELS.includes(claude.model)) fail('claude.model');
     if (!CLAUDE_EFFORTS.includes(claude.effort)) fail('claude.effort');
     if (claude.tools !== undefined && claude.disallowedTools !== undefined) fail('tools and disallowedTools together');
+    if (claude.tools === undefined && claude.disallowedTools === undefined) fail('claude.tools or claude.disallowedTools required');
     if (claude.tools !== undefined) stringList(claude.tools, `${id} claude.tools`);
     if (claude.disallowedTools !== undefined) stringList(claude.disallowedTools, `${id} claude.disallowedTools`);
     if (claude.skills !== undefined) {
@@ -49,15 +60,24 @@ async function agentOutputs(app, productId, dir, commonPath) {
     }
     if (!CODEX_EFFORTS.includes(codex.reasoningEffort)) fail('codex.reasoningEffort');
     if (!CODEX_SANDBOXES.includes(codex.sandboxMode)) fail('codex.sandboxMode');
+    if (codex.sandboxMode === 'read-only') {
+      // A read-only Codex role must not be able to write files on the Claude side either.
+      const allowed = claude.tools ? WRITE_TOOLS.filter(t => claude.tools.includes(t)) : [];
+      if (allowed.length) fail(`read-only role must not allow ${allowed.join(', ')}`);
+      const missing = claude.disallowedTools ? WRITE_TOOLS.filter(t => !claude.disallowedTools.includes(t)) : [];
+      if (missing.length) fail(`read-only role must disallow ${missing.join(', ')}`);
+    }
     const body = await readFile(resolve(root, dir, `${id}.md`), 'utf8').catch(e => { if (e.code === 'ENOENT') fail('body missing'); throw e; });
     if (!body.trim()) fail('body empty');
     if (body.includes("'''")) fail("body contains '''");
     if (/[\x00-\x08\x0b-\x1f\x7f]/.test(body)) fail('body contains control characters');
     const text = [body.trim(), common].filter(Boolean).join('\n\n').replaceAll('{{version}}', app.version) + '\n';
-    const front = [`name: ${id}`, `description: ${yamlScalar(agent.description)}`, `model: ${claude.model}`, `effort: ${claude.effort}`];
+    // A JSON string is also a valid YAML double-quoted scalar with the same value.
+    const front = [`name: ${id}`, `description: ${JSON.stringify(agent.description)}`, `model: ${claude.model}`, `effort: ${claude.effort}`];
     if (claude.tools) front.push(`tools: ${claude.tools.join(', ')}`);
     if (claude.disallowedTools) front.push(`disallowedTools: ${claude.disallowedTools.join(', ')}`);
-    if (claude.skills?.length) front.push('skills:', ...claude.skills.map(s => `  - ${s}`));
+    // Qualified with the plugin name so a user or project skill with the same name is not picked first.
+    if (claude.skills?.length) front.push('skills:', ...claude.skills.map(s => `  - ${app.name}:${s}`));
     files.push([`agents/${id}.md`, `---\n${front.join('\n')}\n---\n\n${text}`]);
     // Codex inherits the parent model; only effort and sandbox are pinned per role.
     files.push([`codex/agents/${productId}-${id}.toml`, [`name = ${JSON.stringify(`${productId}-${id}`)}`,
@@ -125,6 +145,7 @@ for (const product of catalog.products) {
     outputs.set(`server-resources/${product.id}/manifest.json`, json({schemaVersion:1, product:product.id,
       name:app.name, displayName:app.displayName, version:app.version, repository:catalog.repository,
       files:hashes}));
+  for (const dir of profile.managedDirs ?? []) managedDirs.push(`${base}/${dir}`);
   if (profile.agents) {
     if (!Array.isArray(app.agents) || !app.agents.length) throw Error('Invalid agents: missing');
     for (const [path, content] of await agentOutputs(app, product.id, profile.agents, profile.agentsCommon)) outputs.set(`${base}/${path}`, content);
@@ -146,6 +167,25 @@ for (const path of ['plugins/doraft-wiki', 'server-resources/wiki/skills/setup-d
     try { await lstat(destination); process.stderr.write(`은퇴한 생성물: ${path}\n`); different = true; }
     catch (e) { if (e.code !== 'ENOENT') throw e; }
   } else await rm(destination, { recursive: true, force: true });
+}
+// Leftovers in generated-only directories (a removed role or skill) are deleted; --check reports them.
+async function leftovers(dir) {
+  const found = [];
+  const entries = await readdir(resolve(root, dir), { withFileTypes: true }).catch(e => { if (e.code === 'ENOENT') return []; throw e; });
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (![...outputs.keys()].some(output => output.startsWith(`${path}/`))) found.push(path);
+      else found.push(...await leftovers(path));
+    } else if (!outputs.has(path)) found.push(path);
+  }
+  return found;
+}
+for (const dir of managedDirs) for (const path of await leftovers(dir)) {
+  const destination = resolve(root, path);
+  if (!destination.startsWith(root)) throw Error('Output outside repository');
+  if (check) { process.stderr.write(`남은 생성물: ${path}\n`); different = true; }
+  else await rm(destination, { recursive: true, force: true });
 }
 for (const [path, content] of outputs) {
   const destination = resolve(root, path);

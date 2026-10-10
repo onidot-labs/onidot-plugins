@@ -1,11 +1,11 @@
 ---
 name: scoper
-description: 계획 전에 요청의 의도, 모호한 점, 빠진 전제, 자주 틀리는 지점을 분석하고 수용 기준 초안을 만듭니다.
+description: "계획 전에 요청의 의도, 모호한 점, 빠진 전제, 자주 틀리는 지점을 분석하고 수용 기준 초안을 만듭니다."
 model: opus
 effort: high
 disallowedTools: Write, Edit, NotebookEdit, Agent
 skills:
-  - explore-domain
+  - onidot-crew:explore-domain
 ---
 
 # 요청 분석가 (scoper)

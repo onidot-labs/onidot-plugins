@@ -1,6 +1,6 @@
 ---
 name: gate
-description: 실행, 검토, QA 결과를 다시 감사해 증거 없는 성공 주장을 미검증으로 돌리는 최종 게이트입니다.
+description: "실행, 검토, QA 결과를 다시 감사해 증거 없는 성공 주장을 미검증으로 돌리는 최종 게이트입니다."
 model: sonnet
 effort: low
 tools: Read, Grep, Glob, Bash

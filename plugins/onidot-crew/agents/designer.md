@@ -1,11 +1,11 @@
 ---
 name: designer
-description: 화면 설계와 UI 구현을 맡고 기존 디자인 시스템을 보존합니다.
+description: "화면 설계와 UI 구현을 맡고 기존 디자인 시스템을 보존합니다."
 model: sonnet
 effort: high
 disallowedTools: Agent
 skills:
-  - frontend
+  - onidot-crew:frontend
 ---
 
 # 화면 설계자 (designer)
