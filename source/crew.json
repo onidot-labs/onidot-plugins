@@ -36,7 +36,6 @@
           "Write",
           "Edit",
           "NotebookEdit",
-          "Bash",
           "Agent"
         ],
         "skills": [
@@ -58,7 +57,6 @@
           "Write",
           "Edit",
           "NotebookEdit",
-          "Bash",
           "Agent"
         ],
         "skills": [
@@ -76,12 +74,11 @@
       "claude": {
         "model": "opus",
         "effort": "medium",
-        "disallowedTools": [
-          "Write",
-          "Edit",
-          "NotebookEdit",
-          "Bash",
-          "Agent"
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob",
+          "Bash"
         ]
       },
       "codex": {
@@ -99,12 +96,11 @@
           "Write",
           "Edit",
           "NotebookEdit",
-          "Bash",
           "Agent"
         ]
       },
       "codex": {
-        "reasoningEffort": "xhigh",
+        "reasoningEffort": "high",
         "sandboxMode": "read-only"
       }
     },
@@ -117,7 +113,8 @@
         "tools": [
           "Read",
           "Grep",
-          "Glob"
+          "Glob",
+          "Bash"
         ]
       },
       "codex": {
@@ -153,7 +150,6 @@
           "Write",
           "Edit",
           "NotebookEdit",
-          "Bash",
           "Agent"
         ]
       },
@@ -172,7 +168,6 @@
           "Write",
           "Edit",
           "NotebookEdit",
-          "Bash",
           "Agent"
         ]
       },
@@ -283,9 +278,6 @@
           "Grep",
           "Glob",
           "Bash"
-        ],
-        "skills": [
-          "debugging"
         ]
       },
       "codex": {
@@ -338,12 +330,11 @@
       "claude": {
         "model": "sonnet",
         "effort": "low",
-        "disallowedTools": [
-          "Write",
-          "Edit",
-          "NotebookEdit",
-          "Bash",
-          "Agent"
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob",
+          "Bash"
         ]
       },
       "codex": {

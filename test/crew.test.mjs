@@ -86,9 +86,9 @@ test('Claude 서브에이전트는 원본 메타데이터대로 front matter와 
     assert.equal(body, await expectedBody(agent.id));
   }
   const scoper = parseFrontMatter(await read(`${BASE}agents/scoper.md`)).fields;
-  assert.equal(scoper.disallowedTools, 'Write, Edit, NotebookEdit, Bash, Agent');
+  assert.equal(scoper.disallowedTools, 'Write, Edit, NotebookEdit, Agent');
   assert.deepEqual(scoper.skills, ['explore-domain']);
-  assert.equal(parseFrontMatter(await read(`${BASE}agents/explorer.md`)).fields.tools, 'Read, Grep, Glob');
+  assert.equal(parseFrontMatter(await read(`${BASE}agents/explorer.md`)).fields.tools, 'Read, Grep, Glob, Bash');
   for (const agent of source.agents)
     assert.equal((await read(`${BASE}agents/${agent.id}.md`)).split('## 공통 규칙').length, 2, agent.id);
 });
