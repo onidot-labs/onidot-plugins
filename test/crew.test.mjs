@@ -65,6 +65,10 @@ test('crew 스킬 13개는 원본과 같고 front matter를 가진다', async ()
   }
 });
 
+// 역할 본문 뒤에 모든 역할의 공통 규칙이 한 번 붙는다.
+const expectedBody = async (id) =>
+  [(await read(`source/crew/agents/${id}.md`)).trim(), (await read('source/crew/agents-common.md')).trim()].join('\n\n') + '\n';
+
 test('Claude 서브에이전트는 원본 메타데이터대로 front matter와 본문을 가진다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.agents.length, 17);
@@ -79,12 +83,14 @@ test('Claude 서브에이전트는 원본 메타데이터대로 front matter와 
     assert.equal(fields.disallowedTools, agent.claude.disallowedTools?.join(', '));
     assert.deepEqual(fields.skills, agent.claude.skills);
     assert.ok(!('tools' in fields && 'disallowedTools' in fields), agent.id);
-    assert.equal(body, (await read(`source/crew/agents/${agent.id}.md`)).trim() + '\n');
+    assert.equal(body, await expectedBody(agent.id));
   }
   const scoper = parseFrontMatter(await read(`${BASE}agents/scoper.md`)).fields;
   assert.equal(scoper.disallowedTools, 'Write, Edit, NotebookEdit, Bash, Agent');
   assert.deepEqual(scoper.skills, ['explore-domain']);
   assert.equal(parseFrontMatter(await read(`${BASE}agents/explorer.md`)).fields.tools, 'Read, Grep, Glob');
+  for (const agent of source.agents)
+    assert.equal((await read(`${BASE}agents/${agent.id}.md`)).split('## 공통 규칙').length, 2, agent.id);
 });
 
 test('Codex 에이전트 TOML은 모델을 상속하고 본문을 삼중 따옴표 리터럴로 담는다', async () => {
@@ -96,7 +102,7 @@ test('Codex 에이전트 TOML은 모델을 상속하고 본문을 삼중 따옴�
     assert.equal(head, [`name = "crew-${agent.id}"`, `description = ${JSON.stringify(agent.description)}`,
       `model_reasoning_effort = "${agent.codex.reasoningEffort}"`, `sandbox_mode = "${agent.codex.sandboxMode}"`, ''].join('\n'));
     assert.doesNotMatch(toml, /^model\s*=/m);
-    const body = (await read(`source/crew/agents/${agent.id}.md`)).trim() + '\n';
+    const body = await expectedBody(agent.id);
     assert.ok(toml.endsWith(`developer_instructions = '''\n${body}'''\n`), agent.id);
     assert.equal(toml.split("'''").length, 3, agent.id);
   }
@@ -164,4 +170,20 @@ test('잘못된 crew 에이전트 정의는 아무것도 쓰기 전에 거부한
     assert.match(result.stderr, message);
     assert.deepEqual(result.plugins, [], String(message));
   }
+});
+
+test('crew 본문이 가리키는 스킬과 역할은 모두 존재하고 세션 안내는 짧다', async () => {
+  const source = await json('source/crew.json');
+  const skills = new Set(source.skills), roles = new Set(source.agents.map((a) => a.id));
+  const texts = [];
+  for (const skill of source.skills) texts.push([`skill ${skill}`, await read(`source/crew/skills/${skill}/SKILL.md`)]);
+  for (const agent of source.agents) texts.push([`agent ${agent.id}`, await read(`source/crew/agents/${agent.id}.md`)]);
+  for (const [label, text] of texts) {
+    for (const [, name] of text.matchAll(/\b([a-z][a-z-]*[a-z]) 스킬/g)) assert.ok(skills.has(name), `${label}: 없는 스킬 ${name}`);
+    for (const [, name] of text.matchAll(/onidot-crew:([a-z][a-z-]*)/g)) assert.ok(roles.has(name) || skills.has(name), `${label}: 없는 이름 ${name}`);
+  }
+  const start = await read('source/crew/runtime/session-start.json');
+  assert.ok(Buffer.byteLength(start) <= 3000, `세션 안내 ${Buffer.byteLength(start)} bytes`);
+  const context = JSON.parse(start).hookSpecificOutput.additionalContext;
+  for (const role of roles) assert.ok(context.includes(role), `세션 안내에 역할 ${role} 없음`);
 });

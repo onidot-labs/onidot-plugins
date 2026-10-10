@@ -14,7 +14,8 @@ const profiles = {
   wiki: { skills: 'source/skills', sessionStart: 'source/runtime/claude-session-start.json',
     scripts: ['oauth-helper.mjs', 'recording-check.sh', 'catalog-check.mjs'], recordingCheck: true, serverResources: true },
   crew: { skills: 'source/crew/skills', sessionStart: 'source/crew/runtime/session-start.json',
-    scripts: [], recordingCheck: false, serverResources: false, agents: 'source/crew/agents' }
+    scripts: [], recordingCheck: false, serverResources: false, agents: 'source/crew/agents',
+    agentsCommon: 'source/crew/agents-common.md' }
 };
 const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -26,8 +27,11 @@ const stringList = (value, label) => {
     throw Error(`Invalid agents: ${label} must be a non-empty string array`);
   return value;
 };
-async function agentOutputs(app, productId, dir) {
+async function agentOutputs(app, productId, dir, commonPath) {
   const files = [], seen = new Set();
+  // Rules shared by every role live in one file and are appended to each role body.
+  const common = commonPath ? (await readFile(resolve(root, commonPath), 'utf8')).trim() : '';
+  if (common.includes("'''") || /[\x00-\x08\x0b-\x1f\x7f]/.test(common)) throw Error('Invalid agents: common rules');
   for (const agent of app.agents) {
     const id = agent?.id;
     if (typeof id !== 'string' || !/^[a-z][a-z0-9-]*$/.test(id) || seen.has(id)) throw Error(`Invalid agents: id ${id}`);
@@ -49,7 +53,7 @@ async function agentOutputs(app, productId, dir) {
     if (!body.trim()) fail('body empty');
     if (body.includes("'''")) fail("body contains '''");
     if (/[\x00-\x08\x0b-\x1f\x7f]/.test(body)) fail('body contains control characters');
-    const text = body.replaceAll('{{version}}', app.version).trim() + '\n';
+    const text = [body.trim(), common].filter(Boolean).join('\n\n').replaceAll('{{version}}', app.version) + '\n';
     const front = [`name: ${id}`, `description: ${yamlScalar(agent.description)}`, `model: ${claude.model}`, `effort: ${claude.effort}`];
     if (claude.tools) front.push(`tools: ${claude.tools.join(', ')}`);
     if (claude.disallowedTools) front.push(`disallowedTools: ${claude.disallowedTools.join(', ')}`);
@@ -123,7 +127,7 @@ for (const product of catalog.products) {
       files:hashes}));
   if (profile.agents) {
     if (!Array.isArray(app.agents) || !app.agents.length) throw Error('Invalid agents: missing');
-    for (const [path, content] of await agentOutputs(app, product.id, profile.agents)) outputs.set(`${base}/${path}`, content);
+    for (const [path, content] of await agentOutputs(app, product.id, profile.agents, profile.agentsCommon)) outputs.set(`${base}/${path}`, content);
   }
   codexEntries.push({name:app.name, source:{source:'local',path:`./${base}`},
     policy:{installation:'AVAILABLE',authentication:'ON_USE'},category:'Productivity'});
