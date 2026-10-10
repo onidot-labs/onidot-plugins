@@ -1,5 +1,5 @@
 import {execFileSync} from 'node:child_process';
-import {readFileSync,mkdirSync,writeFileSync,rmSync,readdirSync} from 'node:fs';
+import {readFileSync,mkdirSync,writeFileSync,rmSync,readdirSync,existsSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
@@ -16,7 +16,10 @@ const hashes=[];
 for(const product of catalog.products){
  const name=`${product.name}-${product.version}.zip`, destination=resolve(root,'dist',name);
  rmSync(destination,{force:true});
- execFileSync('zip',['-q','-X','-r',destination,'.codex-plugin','.claude-plugin','skills','scripts','claude','codex'],{cwd:resolve(root,'plugins',product.name)});
+ const cwd=resolve(root,'plugins',product.name);
+ // Each product ships only the generated directories it has (crew ships agents and the Codex install script).
+ const entries=['.codex-plugin','.claude-plugin','skills','scripts','claude','codex','agents','settings.json'].filter(path=>existsSync(resolve(cwd,path)));
+ execFileSync('zip',['-q','-X','-r',destination,...entries],{cwd});
  hashes.push(`${createHash('sha256').update(readFileSync(destination)).digest('hex')}  ${name}`);
 }
 writeFileSync(resolve(root,'dist/SHA256SUMS'),hashes.join('\n')+'\n');

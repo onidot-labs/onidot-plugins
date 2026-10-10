@@ -12,6 +12,12 @@
       "source": "./plugins/onidot",
       "version": "0.15.7",
       "description": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다."
+    },
+    {
+      "name": "onidot-crew",
+      "source": "./plugins/onidot-crew",
+      "version": "0.1.0",
+      "description": "계획·위임·검증·재개를 돕는 역할 에이전트와 업무 스킬을 제공합니다."
     }
   ]
 }

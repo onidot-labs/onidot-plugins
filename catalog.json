@@ -7,6 +7,12 @@
       "name": "onidot",
       "displayName": "onidot",
       "version": "0.15.7"
+    },
+    {
+      "id": "crew",
+      "name": "onidot-crew",
+      "displayName": "onidot crew",
+      "version": "0.1.0"
     }
   ]
 }

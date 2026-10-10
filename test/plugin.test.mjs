@@ -62,13 +62,12 @@ test('서버는 플러그인과 같은 스킬 원문을 MCP 리소스로 제공�
   }
 });
 
-test('로컬 배포 카탈로그는 존재하는 Wiki만 참조한다', async () => {
+test('로컬 배포 카탈로그는 존재하는 Wiki와 crew만 참조한다', async () => {
   const codex = await readJson('.agents/plugins/marketplace.json');
   const claude = await readJson('.claude-plugin/marketplace.json');
   for (const marketplace of [codex, claude]) {
     assert.equal(marketplace.name, 'onidot');
-    assert.equal(marketplace.plugins.length, 1);
-    assert.equal(marketplace.plugins[0].name, 'onidot');
+    assert.deepEqual(marketplace.plugins.map((plugin) => plugin.name), ['onidot', 'onidot-crew']);
   }
   assert.deepEqual(codex.plugins[0].source, { source: 'local', path: './plugins/onidot' });
   assert.equal(claude.plugins[0].source, './plugins/onidot');
@@ -78,7 +77,7 @@ test('저장소 루트 카탈로그는 GitHub 마켓플레이스 추가에서 �
   const source = await readJson('source/wiki.json');
   const marketplace = await readJson('.claude-plugin/marketplace.json');
   assert.equal(marketplace.name, 'onidot');
-  assert.equal(marketplace.plugins.length, 1);
+  assert.equal(marketplace.plugins.length, 2);
   assert.equal(marketplace.plugins[0].name, source.name);
   assert.equal(marketplace.plugins[0].version, source.version);
   assert.equal(marketplace.plugins[0].source, './plugins/onidot');
