@@ -25,6 +25,10 @@
     "plain-writing",
     "setup-crew"
   ],
+  "main": {
+    "id": "lead",
+    "description": "onidot crew의 리더. 사용자와 대화하며 일을 판단하고 계획·위임·검증을 이끈다."
+  },
   "agents": [
     {
       "id": "scoper",

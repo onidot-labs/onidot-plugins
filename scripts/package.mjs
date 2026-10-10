@@ -18,7 +18,7 @@ for(const product of catalog.products){
  rmSync(destination,{force:true});
  const cwd=resolve(root,'plugins',product.name);
  // Each product ships only the generated directories it has (crew ships agents and the Codex install script).
- const entries=['.codex-plugin','.claude-plugin','skills','scripts','claude','codex','agents'].filter(path=>existsSync(resolve(cwd,path)));
+ const entries=['.codex-plugin','.claude-plugin','skills','scripts','claude','codex','agents','settings.json'].filter(path=>existsSync(resolve(cwd,path)));
  execFileSync('zip',['-q','-X','-r',destination,...entries],{cwd});
  hashes.push(`${createHash('sha256').update(readFileSync(destination)).digest('hex')}  ${name}`);
 }

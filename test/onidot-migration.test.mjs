@@ -79,7 +79,8 @@ test('재생성과 패키징은 은퇴한 생성물을 제거하고 onidot·onid
     const hash = createHash('sha256').update(await readFile(archive)).digest('hex');
     const crewArchive = join(dir, 'dist/onidot-crew-0.1.0.zip');
     const crewFiles = execFileSync('unzip', ['-Z1', crewArchive], { encoding: 'utf8' }).split('\n');
-    for (const path of ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', 'skills/plan/SKILL.md', 'agents/scoper.md', 'codex/agents/crew-scoper.toml', 'claude/hooks.json', 'claude/session-start.json', 'codex/hooks.json']) assert.ok(crewFiles.includes(path), path);
+    for (const path of ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', 'skills/plan/SKILL.md', 'agents/scoper.md', 'codex/agents/crew-scoper.toml', 'agents/lead.md', 'settings.json', 'codex/session-start.json', 'codex/hooks.json']) assert.ok(crewFiles.includes(path), path);
+    for (const path of ['claude/hooks.json', 'claude/session-start.json', 'codex/agents/crew-lead.toml']) assert.ok(!crewFiles.includes(path), path);
     assert.deepEqual(crewFiles.filter((path) => path.startsWith('scripts/') && !path.endsWith('/')), ['scripts/codex-agents.mjs']);
     const crewHash = createHash('sha256').update(await readFile(crewArchive)).digest('hex');
     assert.equal(await readFile(join(dir, 'dist/SHA256SUMS'), 'utf8'), `${hash}  onidot-0.15.7.zip\n${crewHash}  onidot-crew-0.1.0.zip\n`);

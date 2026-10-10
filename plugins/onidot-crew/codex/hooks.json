@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat \"${PLUGIN_ROOT}/claude/session-start.json\""
+            "command": "cat \"${PLUGIN_ROOT}/codex/session-start.json\""
           }
         ]
       }

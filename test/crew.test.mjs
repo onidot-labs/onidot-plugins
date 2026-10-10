@@ -38,7 +38,7 @@ test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·스크립
     assert.equal(manifest.version, '0.1.0');
     assert.equal(manifest.skills, './skills/');
   }
-  assert.equal(claude.hooks, './claude/hooks.json');
+  assert.equal('hooks' in claude, false);
   assert.equal('mcpServers' in claude, false);
   assert.deepEqual(codex.mcpServers, {});
   assert.equal(codex.hooks, './codex/hooks.json');
@@ -70,7 +70,7 @@ const expectedBody = async (id) =>
 test('Claude 서브에이전트는 원본 메타데이터대로 front matter와 본문을 가진다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.agents.length, 17);
-  assert.deepEqual((await readdir(new URL(`${BASE}agents/`, root))).sort(), source.agents.map((a) => `${a.id}.md`).sort());
+  assert.deepEqual((await readdir(new URL(`${BASE}agents/`, root))).sort(), [...source.agents.map((a) => a.id), source.main.id].map((id) => `${id}.md`).sort());
   for (const agent of source.agents) {
     const { front, body } = splitAgent(await read(`${BASE}agents/${agent.id}.md`));
     const { claude } = agent;
@@ -111,15 +111,28 @@ test('Codex 에이전트 TOML은 모델을 상속하고 본문을 삼중 따옴�
   }
 });
 
-test('crew 훅은 SessionStart 안내만 두고 Stop 훅을 두지 않는다', async () => {
-  const claude = (await json(`${BASE}claude/hooks.json`)).hooks;
+test('리더 에이전트는 모델·도구를 상속하고 settings.json이 메인 스레드로 지정한다', async () => {
+  const source = await json('source/crew.json');
+  assert.deepEqual(source.main, { id: 'lead', description: 'onidot crew의 리더. 사용자와 대화하며 일을 판단하고 계획·위임·검증을 이끈다.' });
+  assert.deepEqual(await json(`${BASE}settings.json`), { agent: 'lead' });
+  const { front, body } = splitAgent(await read(`${BASE}agents/lead.md`));
+  assert.deepEqual(front, ['name: lead', `description: ${JSON.stringify(source.main.description)}`]);
+  for (const key of ['model', 'effort', 'tools', 'disallowedTools', 'skills']) assert.equal(frontLine(`---\n${front.join('\n')}\n---\n`, key), undefined, key);
+  assert.equal(body, (await read('source/crew/main/lead.md')).trim() + '\n');
+  assert.equal(body.includes('## 공통 규칙'), false);
+  assert.equal(await exists(`${BASE}codex/agents/crew-lead.toml`), false);
+  assert.equal((await readdir(new URL(`${BASE}codex/agents/`, root))).length, 17);
+});
+
+test('crew는 Claude 훅 없이 Codex SessionStart 훅 하나만 둔다', async () => {
+  assert.equal(await exists(`${BASE}claude`), false);
   const codex = (await json(`${BASE}codex/hooks.json`)).hooks;
-  assert.deepEqual(Object.keys(claude), ['SessionStart']);
   assert.deepEqual(Object.keys(codex), ['SessionStart']);
-  assert.equal(claude.SessionStart[0].matcher, 'startup|resume|clear|compact');
-  assert.equal(claude.SessionStart[0].hooks[0].command, 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"');
-  assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/claude/session-start.json"');
-  const context = await json(`${BASE}claude/session-start.json`);
+  assert.equal(codex.SessionStart.length, 1);
+  assert.equal(codex.SessionStart[0].matcher, 'startup|resume|clear|compact');
+  assert.equal(codex.SessionStart[0].hooks.length, 1);
+  assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/codex/session-start.json"');
+  const context = await json(`${BASE}codex/session-start.json`);
   assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
   assert.ok(context.hookSpecificOutput.additionalContext.includes('0.1.0'));
   assert.ok(!context.hookSpecificOutput.additionalContext.includes('{{version}}'));
@@ -187,6 +200,15 @@ test('잘못된 crew 에이전트 정의는 아무것도 쓰기 전에 거부한
     // read-only 역할은 Claude 쪽에서도 쓰기 도구가 막혀야 한다.
     [(crew) => { agent(crew, 'gate').claude.tools.push('Edit'); }, /gate read-only role must not allow Edit/],
     [(crew) => { agent(crew, 'scoper').claude.disallowedTools = ['Write', 'Agent']; }, /scoper read-only role must disallow Edit, NotebookEdit/],
+    // 리더(main) 정의 검증.
+    [(crew) => { crew.main.model = 'opus'; }, /Invalid main: unknown key model/],
+    [(crew) => { crew.main.id = 'qa'; }, /Invalid main: id qa duplicates a role/],
+    [(crew) => { crew.main.id = 'Lead'; }, /Invalid main: id Lead/],
+    [(crew) => { crew.main.description = '줄\n바꿈'; }, /Invalid main: description/],
+    [(crew) => { crew.main.description = '고립 \ud800 서로게이트'; }, /Invalid main: description/],
+    [(crew, temp) => writeFile(join(temp, 'source/crew/main/lead.md'), '\n \n'), /Invalid main: body empty/],
+    [(crew, temp) => writeFile(join(temp, 'source/crew/main/lead.md'), "본문\n'''\n"), /Invalid main: body contains '''/],
+    [(crew, temp) => rm(join(temp, 'source/crew/main/lead.md')), /Invalid main: body missing/],
   ];
   for (const [mutate, message] of cases) {
     const result = await generateWith(mutate);
@@ -214,13 +236,19 @@ test('생성 목록에서 빠진 crew 생성물은 generate가 지우고 --check
     await mkdir(join(crewDir, 'skills/retired-skill'), { recursive: true });
     await writeFile(join(crewDir, 'skills/retired-skill/SKILL.md'), 'old\n');
     await writeFile(join(crewDir, 'skills/plan/extra.md'), 'old\n');
+    // 옛 Claude 훅 디렉터리는 은퇴 목록으로 지운다.
+    await mkdir(join(crewDir, 'claude'), { recursive: true });
+    await writeFile(join(crewDir, 'claude/hooks.json'), '{}\n');
+    await writeFile(join(crewDir, 'claude/session-start.json'), '{}\n');
     const check = runGenerate(temp, '--check');
     assert.equal(check.status, 1);
+    assert.match(check.stderr, /은퇴한 생성물: plugins\/onidot-crew\/claude\n/);
     for (const path of ['agents/writer.md', 'codex/agents/crew-writer.toml', 'skills/retired-skill', 'skills/plan/extra.md'])
       assert.ok(check.stderr.includes(`남은 생성물: plugins/onidot-crew/${path}\n`), `${path}\n${check.stderr}`);
     assert.equal(runGenerate(temp).status, 0);
+    assert.equal(await readFile(join(crewDir, 'claude/hooks.json')).then(() => true, () => false), false);
     assert.equal((await readdir(join(crewDir, 'agents'))).includes('writer.md'), false);
-    assert.equal((await readdir(join(crewDir, 'agents'))).length, 16);
+    assert.equal((await readdir(join(crewDir, 'agents'))).length, 17);
     assert.equal((await readdir(join(crewDir, 'codex/agents'))).includes('crew-writer.toml'), false);
     assert.equal((await readdir(join(crewDir, 'skills'))).includes('retired-skill'), false);
     assert.deepEqual(await readdir(join(crewDir, 'skills/plan')), ['SKILL.md']);
