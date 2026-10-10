@@ -14,7 +14,7 @@ const profiles = {
   wiki: { skills: 'source/skills', sessionStart: 'source/runtime/claude-session-start.json',
     scripts: ['oauth-helper.mjs', 'recording-check.sh', 'catalog-check.mjs'], recordingCheck: true, serverResources: true },
   crew: { skills: 'source/crew/skills', sessionStart: 'source/crew/runtime/session-start.json',
-    scripts: [], recordingCheck: false, serverResources: false, agents: 'source/crew/agents',
+    scripts: ['codex-agents.mjs'], scriptsDir: 'source/crew/runtime', recordingCheck: false, serverResources: false, agents: 'source/crew/agents',
     agentsCommon: 'source/crew/agents-common.md' }
 };
 const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
@@ -111,7 +111,7 @@ for (const product of catalog.products) {
   if (JSON.parse(sessionStart).hookSpecificOutput?.hookEventName !== 'SessionStart') throw Error('Invalid session start context');
   outputs.set(`${base}/claude/session-start.json`, sessionStart);
   for (const script of profile.scripts)
-    outputs.set(`${base}/scripts/${script}`, await readFile(resolve(root, `source/runtime/${script}`), 'utf8'));
+    outputs.set(`${base}/scripts/${script}`, await readFile(resolve(root, `${profile.scriptsDir ?? 'source/runtime'}/${script}`), 'utf8'));
   const hashes = {};
   for (const skill of app.skills) {
     const markdown = (await readFile(resolve(root, `${profile.skills}/${skill}/SKILL.md`), 'utf8')).replaceAll('{{version}}', app.version);

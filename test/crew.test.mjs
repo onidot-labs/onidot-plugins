@@ -51,9 +51,9 @@ test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·스크립
   assert.equal(await exists(`${BASE}.mcp.json`), false);
 });
 
-test('crew 스킬 13개는 원본과 같고 front matter를 가진다', async () => {
+test('crew 스킬 14개는 원본과 같고 front matter를 가진다', async () => {
   const source = await json('source/crew.json');
-  assert.deepEqual(source.skills, ['plan', 'run', 'research', 'verify', 'resume', 'delegate', 'explore-domain', 'spec-first', 'tdd', 'debugging', 'review-work', 'frontend', 'plain-writing']);
+  assert.deepEqual(source.skills, ['plan', 'run', 'research', 'verify', 'resume', 'delegate', 'explore-domain', 'spec-first', 'tdd', 'debugging', 'review-work', 'frontend', 'plain-writing', 'setup-crew']);
   const dirs = (await readdir(new URL(`${BASE}skills/`, root))).sort();
   assert.deepEqual(dirs, [...source.skills].sort());
   for (const skill of source.skills) {
