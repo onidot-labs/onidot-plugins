@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sha = (text) => createHash('sha256').update(text).digest('hex');
@@ -167,6 +167,119 @@ test('대상 위치는 --codex-home, CODEX_HOME, 기본값 순으로 정한다',
   await mkdir(fakeHome);
   assert.equal(run(f, ['install'], { HOME: fakeHome, USERPROFILE: fakeHome }).status, 0);
   assert.equal(await text({ agents: join(fakeHome, '.codex/agents') }, 'crew-a.toml'), 'a1\n');
+});
+
+// 사전 로드 모듈로 N번째 기록 rename을 실패시킨다. 1번째는 파일을 쓰기 전 대기 기록, 2번째는 최종 기록이다.
+const failRecord = pathToFileURL(join(root, 'test/fixtures/fail-record-rename.mjs')).href;
+const runFailing = (f, at, command = 'install') => spawnSync(process.execPath,
+  ['--import', failRecord, join(f.pkg, 'scripts/codex-agents.mjs'), command, '--codex-home', f.home, '--json'],
+  { encoding: 'utf8', env: { ...process.env, CODEX_HOME: '', FAIL_RECORD_AT: String(at) } });
+const LOCK = '.onidot-crew.lock';
+
+test('최종 기록 쓰기가 실패하면 exit 1로 알리고 다음 실행에서 대기 기록으로 소유를 회수한다', async () => {
+  const f = await fixture();
+  const r = runFailing(f, 2);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /기록 실패/);
+  assert.match(r.stderr, /파일 2개 설치됨/);
+  assert.equal(await text(f, 'crew-a.toml'), 'a1\n');
+  const pending = await record(f);
+  assert.deepEqual(pending.files, {});
+  assert.deepEqual(pending.pending, { 'crew-a.toml': sha('a1\n'), 'crew-b.toml': sha('b1\n') });
+  // 대기 기록과 해시가 같으면 사용자 파일이 아니라 우리 파일로 보고 이어서 관리한다.
+  assert.equal(parse(runHome(f, 'status')).results.find((x) => x.name === 'crew-a.toml').state, '설치됨');
+  const again = runHome(f, 'install');
+  assert.equal(again.status, 0, again.stderr);
+  assert.deepEqual(parse(again).results.map((x) => x.action), ['변경 없음', '변경 없음']);
+  assert.deepEqual(await record(f), { schemaVersion: 1, package: 'onidot-crew', version: '1.0.0',
+    files: { 'crew-a.toml': sha('a1\n'), 'crew-b.toml': sha('b1\n') } });
+});
+
+test('파일을 쓰기 전 대기 기록이 실패하면 아무 파일도 놓지 않고 exit 1이다', async () => {
+  const f = await fixture();
+  const r = runFailing(f, 1);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /기록 실패/);
+  assert.match(r.stderr, /파일 0개 설치됨/);
+  assert.deepEqual((await readdir(f.agents)).filter((n) => n.startsWith('crew-')), []);
+  assert.equal((await readdir(f.agents)).includes(LOCK), false);
+});
+
+test('기록 경로가 디렉터리면 exit 1이고 파일을 놓지 않는다', async () => {
+  const f = await fixture();
+  await mkdir(join(f.agents, '.onidot-crew.json'), { recursive: true });
+  const r = runHome(f, 'install');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /실행 실패|입력 오류/);
+  assert.deepEqual((await readdir(f.agents)).filter((n) => n.startsWith('crew-')), []);
+});
+
+test('다른 설치가 잠금을 잡고 있으면 install·uninstall을 거부하고 잠금을 남긴다', async () => {
+  const f = await fixture();
+  await mkdir(f.agents, { recursive: true });
+  // 살아 있는 PID(이 시험 프로세스)가 잡은 잠금이다.
+  const lock = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
+  await writeFile(join(f.agents, LOCK), lock);
+  for (const command of ['install', 'uninstall']) {
+    const r = runHome(f, command);
+    assert.equal(r.status, 1, command);
+    assert.match(r.stderr, /다른 설치가 진행 중/);
+    assert.match(r.stderr, new RegExp(`PID ${process.pid}`));
+  }
+  assert.equal(await readFile(join(f.agents, LOCK), 'utf8'), lock);
+  assert.deepEqual((await readdir(f.agents)).filter((n) => n.startsWith('crew-')), []);
+  // PID가 없는 잠금은 자동으로 지우지 않고 처리 방법을 안내한다.
+  await writeFile(join(f.agents, LOCK), 'garbage');
+  const unknown = runHome(f, 'install');
+  assert.equal(unknown.status, 1);
+  assert.match(unknown.stderr, /잠금 파일을 지운 뒤 다시 실행/);
+  assert.equal(await readFile(join(f.agents, LOCK), 'utf8'), 'garbage');
+});
+
+test('끝난 프로세스의 잠금은 안내 후 치우고 설치하며, 끝나면 잠금을 해제한다', async () => {
+  const f = await fixture();
+  await mkdir(f.agents, { recursive: true });
+  const dead = spawnSync(process.execPath, ['-e', '']).pid;
+  await writeFile(join(f.agents, LOCK), JSON.stringify({ pid: dead, startedAt: new Date(0).toISOString() }));
+  const r = runHome(f, 'install');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /끝난 프로세스/);
+  assert.equal(await text(f, 'crew-a.toml'), 'a1\n');
+  assert.equal((await readdir(f.agents)).includes(LOCK), false);
+});
+
+test('대상이 심볼릭 링크면 끊어졌든 아니든 충돌로 두고 건드리지 않는다', async () => {
+  const f = await fixture();
+  await mkdir(f.agents, { recursive: true });
+  const target = join(f.dir, 'target.toml');
+  await writeFile(target, 'target\n');
+  await symlink(target, join(f.agents, 'crew-a.toml'));
+  await symlink(join(f.dir, 'missing.toml'), join(f.agents, 'crew-b.toml'));
+  const r = runHome(f, 'install');
+  assert.equal(r.status, 0, r.stderr);
+  const out = parse(r);
+  assert.equal(out.conflicts, 2);
+  assert.deepEqual(out.results.map((x) => x.action), ['충돌', '충돌']);
+  for (const name of ['crew-a.toml', 'crew-b.toml']) assert.ok((await lstat(join(f.agents, name))).isSymbolicLink(), name);
+  assert.equal(await readFile(target, 'utf8'), 'target\n');
+  assert.deepEqual((await record(f)).files, {});
+  assert.ok(parse(runHome(f, 'status')).results.every((x) => x.state.startsWith('충돌')));
+});
+
+test('다른 파일이 같은 역할 이름을 쓰면 그 역할은 설치하지 않는다', async () => {
+  const f = await fixture({ 'crew-a.toml': 'name = "crew-a"\nx = 1\n', 'crew-b.toml': 'name = "crew-b"\nx = 1\n' });
+  await mkdir(f.agents, { recursive: true });
+  await writeFile(join(f.agents, 'mine.toml'), '# 내 역할\nname = "crew-a"\n');
+  const r = runHome(f, 'install');
+  assert.equal(r.status, 0, r.stderr);
+  const out = parse(r);
+  assert.equal(out.conflicts, 1);
+  const a = out.results.find((x) => x.name === 'crew-a.toml');
+  assert.equal(a.action, '충돌');
+  assert.match(a.detail, /mine\.toml/);
+  assert.deepEqual((await readdir(f.agents)).filter((n) => n.startsWith('crew-')), ['crew-b.toml']);
+  assert.deepEqual(Object.keys((await record(f)).files), ['crew-b.toml']);
+  assert.equal(await readFile(join(f.agents, 'mine.toml'), 'utf8'), '# 내 역할\nname = "crew-a"\n');
 });
 
 test('생성된 crew 패키지에서 같은 스크립트로 실제 역할 17개를 설치한다', async () => {
