@@ -6,7 +6,7 @@
   "version": "0.15.7",
   "repository": "https://github.com/onidot-labs/onidot-plugins",
   "files": {
-    "skills/setup-onidot/SKILL.md": "497e643485f4d5219ff733947d55cf23e662acb73377f91b4d4653ef8245738f",
+    "skills/setup-onidot/SKILL.md": "94edaa3be590422b64948f5593c9939b79898006110a631b0ddaea7cd63a37bc",
     "skills/use-onidot/SKILL.md": "db67849f1ac8793b9860aa565b9ee72f271a098ddd2df58af39e9fecda2becac",
     "skills/onidot-guide/SKILL.md": "1be8a8f7ccd5297b2c94688d0246ee58c96a3ef1575ea6caad8c4fc0cded2136"
   }

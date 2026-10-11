@@ -93,3 +93,36 @@ test('진단 CLI는 명시한 별칭 등록과 로컬 OAuth metadata의 resource
     assert.equal(calls, 2);
   } finally { server.close(); await rm(dir, { recursive: true, force: true }); }
 });
+
+test('고정 실행기 경로는 정상이고 옛 버전 경로는 진단 코드로 구분한다', async () => {
+  const { assessHelperCommand } = await import('../scripts/verify-codex-oauth.mjs');
+  const home = '/h/.codex';
+  const fixed = `ONIDOT_ALIAS=dev node "${home}/onidot-oauth/bin/oauth-helper.mjs" headers`;
+  assert.deepEqual(assessHelperCommand(fixed, { codexHome: home, exists: () => true }), []);
+  assert.deepEqual(assessHelperCommand(fixed, { codexHome: home, exists: () => false }), ['OAUTH_HELPER_LAUNCHER_MISSING']);
+  const old = `node "${home}/plugins/cache/onidot/onidot/0.15.0/scripts/oauth-helper.mjs" headers`;
+  assert.deepEqual(assessHelperCommand(old, { codexHome: home, exists: () => false }), ['OAUTH_HELPER_VERSIONED_PATH_GONE']);
+  assert.deepEqual(assessHelperCommand(old, { codexHome: home, exists: () => true }), ['OAUTH_HELPER_VERSIONED_PATH']);
+  assert.deepEqual(assessHelperCommand(undefined, { codexHome: home, exists: () => true }), []);
+});
+
+test('assessCodexOAuth는 helperCommand 진단을 합산한다', async () => {
+  const home = '/h/.codex';
+  const failures = assessCodexOAuth({ ...expected, helperCommand: `node "${home}/plugins/cache/onidot/onidot/0.15.0/scripts/oauth-helper.mjs" headers`, codexHome: home, helperExists: () => false });
+  assert.deepEqual(failures, ['OAUTH_HELPER_VERSIONED_PATH_GONE']);
+});
+
+test('config.toml에서 지정한 연결 표의 http_headers_helper만 읽는다', async () => {
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { readHelperCommand } = await import('../scripts/verify-codex-oauth.mjs');
+  const dir = await mkdtemp(join(tmpdir(), 'onidot-toml-'));
+  try {
+    const path = join(dir, 'config.toml');
+    await writeFile(path, `[mcp_servers.onidot-work]\nhttp_headers_helper = 'other'\n\n[mcp_servers.onidot-dev]\nurl = "x"\nhttp_headers_helper = 'node "/a/b.mjs" headers'\n`);
+    assert.equal(await readHelperCommand(path, 'onidot-dev'), 'node "/a/b.mjs" headers');
+    assert.equal(await readHelperCommand(path, 'onidot-none'), undefined);
+    assert.equal(await readHelperCommand(join(dir, 'missing.toml'), 'onidot-dev'), undefined);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
