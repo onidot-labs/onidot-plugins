@@ -477,3 +477,34 @@ test('start의 활성 표시는 임시 파일을 거쳐 쓰고 남기지 않는�
     assert.deepEqual(JSON.parse(await readFile(join(f.data, 'flow', `${SID}.active.json`), 'utf8')).workId, WORK);
   } finally { await f.cleanup(); }
 });
+
+// ---- 단계 ID 발급(ids) ----
+const decodeTsid = (s) => [...s].reduce((u, c) => (u << 5n) | BigInt('0123456789abcdefghjkmnpqrstvwxyz'.indexOf(c)), 0n);
+test('ids는 서버 형식의 겹치지 않는 단계 ID를 세션·데이터 경로 없이 발급한다', () => {
+  const r = spawnSync(process.execPath, [script, 'ids', '--count', '50'], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(r.status, 0, r.stderr);
+  const { ids } = JSON.parse(r.stdout);
+  assert.equal(ids.length, 50);
+  assert.equal(new Set(ids).size, 50);
+  for (const id of ids) {
+    assert.ok(isTsid(id), id);
+    // 서버(2020-01-01 기준 밀리초 << 22)와 같은 시각 부분이어야 한다.
+    const ms = Number(decodeTsid(id) >> 22n) + 1577836800000;
+    assert.ok(Math.abs(ms - Date.now()) < 60_000, `${id} → ${new Date(ms).toISOString()}`);
+  }
+});
+test('ids의 시각 부분은 서버가 만든 실제 ID와 같은 방식으로 읽힌다', async () => {
+  const { encodeTsid, newTsids } = await import(script);
+  // 운영 작업 0rwm0wcpqz6mg는 2026-10-11에 서버가 만든 ID다.
+  const ms = Number(decodeTsid('0rwm0wcpqz6mg') >> 22n) + 1577836800000;
+  assert.equal(new Date(ms).toISOString().slice(0, 10), '2026-10-11');
+  assert.equal(encodeTsid(decodeTsid('0rwm0wcpqz6mg')), '0rwm0wcpqz6mg');
+  const [a] = newTsids(1, ms);
+  assert.equal(Number(decodeTsid(a) >> 22n) + 1577836800000, ms);
+});
+test('ids는 잘못된 개수를 거부한다', () => {
+  for (const bad of ['0', '201', 'abc', '-1']) {
+    const r = spawnSync(process.execPath, [script, 'ids', `--count=${bad}`], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+    assert.equal(r.status, 2, `${bad}: ${r.stderr}`);
+  }
+});

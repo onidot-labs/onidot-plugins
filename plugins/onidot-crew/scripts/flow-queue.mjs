@@ -37,6 +37,26 @@ const SAFE = /^[A-Za-z0-9_.:-]+$/;
 export const validAgentId = (v) => serverText(v, 200) && SAFE.test(v);
 export const validRole = (v) => serverText(v, 120) && SAFE.test(v);
 // 항목 ID는 16진수와 점만 쓴다. 금지 문자열(sk-·ghp_ 등)과 키=값 꼴이 생길 수 없다.
+// 서버 internal/ids와 같은 TSID: 2020-01-01부터의 밀리초 42비트 + 난수 22비트, 13자 Crockford 소문자.
+const TSID_EPOCH = 1577836800000n;
+const TSID_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
+export const encodeTsid = (u) => {
+  let s = TSID_ALPHABET[Number(u >> 60n)];
+  for (let i = 1; i < 13; i++) s += TSID_ALPHABET[Number((u >> BigInt(60 - 5 * i)) & 31n)];
+  return s;
+};
+// 한 번에 여러 개를 만들 때는 난수 부분을 이어 붙여 같은 밀리초 안에서도 겹치지 않게 한다.
+export function newTsids(count, now = Date.now()) {
+  const ms = BigInt(now) - TSID_EPOCH;
+  let rand = BigInt(randomBytes(3).readUIntBE(0, 3) & 0x3fffff);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const r = (rand + BigInt(i)) & 0x3fffffn;
+    const tick = ms + (rand + BigInt(i)) / 0x400000n;
+    out.push(encodeTsid((tick << 22n) | r));
+  }
+  return out;
+}
 export const newId = () => `${Date.now().toString(16)}.${randomBytes(6).toString('hex')}`;
 export const eventIdOf = (id) => `cc-flow:${id}`;
 
@@ -347,9 +367,16 @@ function runCommand(argv) {
   try {
     const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: {
       data: { type: 'string' }, 'claude-session': { type: 'string' }, work: { type: 'string' }, session: { type: 'string' },
-      'next-seq': { type: 'string' }, stage: { type: 'string' }, discard: { type: 'boolean' } } });
+      'next-seq': { type: 'string' }, stage: { type: 'string' }, discard: { type: 'boolean' }, count: { type: 'string' } } });
     const [name, ...rest] = positionals;
-    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | hook <session-start|subagent-start|subagent-stop|post-agent>');
+    // ids는 대기열과 무관하게 작업 기록 단계 ID만 발급하므로 세션·데이터 경로가 없어도 된다.
+    if (name === 'ids') {
+      const raw = values.count ?? '1';
+      if (!/^\d{1,3}$/.test(raw) || Number(raw) < 1 || Number(raw) > 200) throw new UsageError('--count에 1~200 사이 개수를 주세요.');
+      out({ ids: newTsids(Number(raw)) });
+      return;
+    }
+    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | ids | hook <session-start|subagent-start|subagent-stop|post-agent>');
     const ctx = commandContext(values);
     // 이 세션의 잠금 파일을 만들 디렉터리. status는 읽기만 하므로 만들지 않는다.
     if (name !== 'status') mkdirSync(ctx.p.dir, { recursive: true, mode: 0o700 });
