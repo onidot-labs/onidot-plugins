@@ -83,7 +83,7 @@ url = "<회사 로컬 MCP_URL>"
 ```sh
 # 설치된 플러그인 캐시의 최신 버전에서 한 번 실행한다(이 안내에는 버전을 적지 않는다).
 f=$(ls -d "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/onidot/onidot/*/scripts/oauth-helper-install.mjs 2>/dev/null | sort -V | tail -1)
-[ -n "$f" ] && node "$f" || echo "onidot 플러그인을 먼저 설치하세요" >&2
+if [ -n "$f" ]; then node "$f"; else echo "onidot 플러그인을 먼저 설치하세요" >&2; false; fi
 # stdout에 config.toml에 넣을 http_headers_helper 한 줄이 나온다. 진행 내용은 stderr에 나온다.
 ```
 
