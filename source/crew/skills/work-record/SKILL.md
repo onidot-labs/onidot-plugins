@@ -45,7 +45,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
    - `expectedVersion`: 0
    - `externalSessionKey`: `claude-code:<시작 시각 같은 고유 값>`(Codex면 `codex:`로 시작)
    - `harness`: `claude-code` 또는 `codex`
-   - `collectionScope`: `MCP_ONLY`
+   - `collectionScope`: `MCP_ONLY`(Claude Code에서 런타임이 준비돼 있으면 3절 뒤의 '런타임 모드'대로 `HOOK_ONLY`와 `deviceId`)
    - `binding`: 아는 경우 `{ "repository": "<저장소>", "branch": "<브랜치>" }`, 모르면 `{}`
    - 응답의 `entityId`가 세션 ID다.
 5. `claim_work`로 작업 전체를 맡는다.
@@ -83,6 +83,19 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 11. 단계를 시작하기 전에 `get_work`로 두 가지를 본다.
    - 사용자가 남긴 지시(`pendingInstructions`)가 있으면 반영하고 `acknowledge_work_instruction`(`instructionId`, `reason`)으로 확인한다.
    - 사용자가 웹에서 작업을 멈췄으면 더 쓰지 않고 사용자에게 보고한다.
+
+## 3-1. 런타임 모드(Claude Code, 이 PC의 `oni runtime`이 있을 때)
+
+런타임 모드에서는 훅이 서브에이전트·세션·단계 이벤트를 메인 AI와 MCP를 거치지 않고 이 PC의 `oni runtime`으로 직접 보낸다. 백그라운드 서브에이전트의 끝도 빠지지 않는다. 런타임이 없거나 준비되지 않았으면 이 절을 건너뛰고 지금까지의 절차(대기열 모드, 3절 8번)를 그대로 쓴다. Codex에는 해당하지 않는다.
+
+- 판단: 2절 4번 전에 `<flow> readiness --space <spaceId>`를 실행한다. 출력은 런타임 응답(`ready`, `connection`, `instanceId`, `deviceId`, `reason`)에 `runtime: true|false`를 더한 JSON이다. `runtime`이 false(런타임 없음·토큰 없음)이거나 `ready`가 false이면 대기열 모드다.
+- 세션 열기: `ready`가 true이면 `start_work_session`을 `collectionScope`: `HOOK_ONLY`, `deviceId`: 응답의 `deviceId`로 연다. 서버가 거부하면(기기·연결 불일치 등) `MCP_ONLY`로 다시 열고 대기열 모드로 간다. `deviceId`는 이 경우에만 보낸다(공통 규칙의 '보내지 않는다'는 대기열 모드에 대한 것이다).
+- 켜기: 2절 6번을 마친 뒤 `<flow> start --work <작업 ID> --session <세션 ID> --space <spaceId> --mode runtime`을 실행한다. `--mode`를 생략하면 대기열 모드다. 대기열에 보내지 않은 항목이 남아 있으면 runtime으로 바꾸지 않고 종료 코드 3으로 거부하니, 먼저 보내고 `ack`하거나 `stop --discard`로 정리한다. 켜면 런타임에 `FLOW_BOUND`가 간다.
+- gate 검토 세션(7절 22번)도 메인 세션과 같은 `collectionScope`·`deviceId`로 연다. `HOOK_ONLY` 자식 세션은 부모와 같은 기기여야 한다.
+- 단계 흐름: 3절 7번의 `append_work_session_events` 대신 단계를 맡기기 직전에 `<flow> stage start --stage <단계 ID> --role <맡긴 역할> --summary <한 줄>`, 끝난 직후에 `<flow> stage finish --stage <단계 ID> --result DONE|FAILED|BLOCKED --summary <증거 한 줄>`을 실행한다. 이벤트 모양·순번·시각은 명령과 런타임이 정하므로 `producerSeq`·`occurredAt`을 직접 만들지 않는다. 금지 문자열 규칙(공통 규칙)은 그대로 적용되고, 걸리면 종료 코드 2로 거부된다. 런타임에 닿지 않아도 명령이 이벤트를 보관함에 남기고 성공한다(출력의 `sent`가 `inbox`).
+- 서브에이전트 시작·끝: 3절 8번의 꺼내기·보내기·지우기(`pending`·`ack`·`unstage`)를 하지 않는다. 훅이 런타임으로 직접 보낸다. 단계를 맡기는 Agent 호출의 `description` 끝에 `[stage:<단계 ID>]`를 붙이는 규칙은 그대로다(훅이 `AGENT_LINKED`로 단계와 서브에이전트를 잇는다).
+- 계속 MCP로 하는 것: 증거 기록, gate 판정, 단계·작업 완료, 인계, 사용자 결정 대기 전이. 작업 담당을 살리는 `ACTIVITY` 이벤트(3절 7번 마지막 항목)도 `append_work_session_events`로 보낸다. 서버가 거부하면 거부 응답을 그대로 사용자에게 보고한다.
+- 끄기: 인계 뒤 `<flow> stop`(5절 14·15번, 7절 25번). 런타임 모드면 `FLOW_UNBOUND`가 간다. `/clear` 뒤나 새 대화에서 이어 받으면 `readiness`부터 다시 한다.
 
 ## 4. 사용자 결정을 기다릴 때
 
@@ -165,7 +178,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 - [ ] 계획 확정 뒤 작업을 만들고(기준 문서는 `links`에, 선행 관계는 발급한 단계 ID로) 세션을 열어 작업을 맡았다.
 - [ ] 이어 받을 때 `links`의 기준 문서 원문을 읽었다.
 - [ ] 단계 시작·끝을 `STAGE_STARTED`·`STAGE_FINISHED`로 남겼다. `get_work_flow`가 없는 서버면 `SUMMARY` 메모로 대신했다.
-- [ ] Claude Code에서는 흐름 대기열을 켜고, 보내기에 성공한 항목만 지웠고, 그만둘 때 껐다.
+- [ ] Claude Code에서는 `readiness`로 런타임 준비를 확인해 런타임 모드(`HOOK_ONLY`, `stage start|finish`)나 대기열 모드 중 하나로 흐름을 켰고, 대기열 모드에서는 보내기에 성공한 항목만 지웠고, 그만둘 때 껐다.
 - [ ] 결정이 필요하면 `PAUSED`로 바꾸고 질문을 남겼다.
 - [ ] 멈출 때 인계를 남겼다.
 - [ ] 단계·작업의 증거를 기록하고 gate의 독립 검토 판정을 받은 뒤에만 완료했다. `HEAVY`는 판정 대신 사용자 웹 확인을 요청했다.
