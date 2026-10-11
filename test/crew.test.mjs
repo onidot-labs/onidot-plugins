@@ -29,13 +29,13 @@ const splitAgent = (markdown) => {
 test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·완료 기록 검사를 두지 않는다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.name, 'onidot-crew');
-  assert.equal(source.version, '0.3.0');
+  assert.equal(source.version, '0.4.0');
   assert.equal(source.displayName, 'onidot crew');
   const claude = await json(`${BASE}.claude-plugin/plugin.json`);
   const codex = await json(`${BASE}.codex-plugin/plugin.json`);
   for (const manifest of [claude, codex]) {
     assert.equal(manifest.name, 'onidot-crew');
-    assert.equal(manifest.version, '0.3.0');
+    assert.equal(manifest.version, '0.4.0');
     assert.equal(manifest.skills, './skills/');
   }
   assert.equal(claude.hooks, './claude/hooks.json');
@@ -144,7 +144,7 @@ test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionSt
   assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/codex/session-start.json"');
   const context = await json(`${BASE}codex/session-start.json`);
   assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.3.0'));
+  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.4.0'));
   assert.ok(!context.hookSpecificOutput.additionalContext.includes('{{version}}'));
 });
 
@@ -154,9 +154,9 @@ test('두 marketplace와 catalog는 onidot과 onidot-crew를 함께 싣는다', 
   assert.deepEqual(codex.plugins.find((p) => p.name === 'onidot-crew').source, { source: 'local', path: './plugins/onidot-crew' });
   const entry = claude.plugins.find((p) => p.name === 'onidot-crew');
   assert.equal(entry.source, './plugins/onidot-crew');
-  assert.equal(entry.version, '0.3.0');
+  assert.equal(entry.version, '0.4.0');
   assert.deepEqual((await json('catalog.json')).products.find((p) => p.id === 'crew'),
-    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.3.0' });
+    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.4.0' });
 });
 
 // 원본 복사본에서 생성기를 돌려 잘못된 crew 정의를 생성 전에 거부하는지 본다.
@@ -378,4 +378,29 @@ test('verify 스킬과 gate 에이전트와 run 스킬이 work-record 완료 절
   assert.ok((await read('source/crew/agents/gate.md')).includes('MCP 도구'));
   // Codex 역할 이름은 crew-<역할>이라 gate도 crew-gate로 설치된다.
   assert.ok((await read('source/crew/agents/gate.md')).includes('crew-gate'));
+});
+
+// 2026-10-11 결정 미적용 이슈(onidot 기록 0rwnbzts222gv)의 재발 방지 규칙이 생성물에 남아 있는지 본다.
+test('위임 전 기준 확인·원문 전달·결과 대조 규칙이 리더·스킬·역할에 들어 있다', async () => {
+  const skill = (name) => read(`${BASE}skills/${name}/SKILL.md`);
+  const agent = (id) => read(`${BASE}agents/${id}.md`);
+  const has = (text, needle, where) => assert.ok(text.includes(needle), `${where}에 '${needle}'이 없다`);
+  const lead = await agent('lead');
+  has(lead, 'onidot-crew:spec-first', 'lead');
+  has(lead, '말없이 동의하지 않고', 'lead');
+  const spec = await skill('spec-first');
+  for (const n of ['기준 묶음', '원문을 직접 읽는다', 'recall', '진단·제안만 하는 일이라도 생략하지 않는다']) has(spec, n, 'spec-first');
+  const delegate = await skill('delegate');
+  for (const n of ['원문 핵심 문장', '기준과 어긋난 점', '그대로 받아들이거나 동의하지 않는다']) has(delegate, n, 'delegate');
+  has(await skill('plan'), '**기준 찾기.**', 'plan');
+  has(await skill('research'), '이미 있는 조사부터', 'research');
+  has(await skill('review-work'), '**기준 위반**', 'review-work');
+  has(await skill('verify'), '기준 묶음', 'verify');
+  const record = await skill('work-record');
+  for (const n of ['`links`', 'ids --count', '`links`에 있는 기준 문서 원문을 읽는다']) has(record, n, 'work-record');
+  // 모든 역할이 공통 규칙으로 기준 원문 확인과 '기준과 어긋남' 반환을 받는다.
+  for (const { id } of (await json('source/crew.json')).agents) has(await agent(id), "'기준과 어긋남'", id);
+  for (const id of ['designer', 'planner']) has(await agent(id), '### 따른 기준', id);
+  const context = await json(`${BASE}codex/session-start.json`);
+  has(context.hookSpecificOutput.additionalContext, 'onidot-crew:spec-first', 'session-start');
 });
