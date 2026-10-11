@@ -29,13 +29,13 @@ const splitAgent = (markdown) => {
 test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·스크립트를 두지 않는다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.name, 'onidot-crew');
-  assert.equal(source.version, '0.1.0');
+  assert.equal(source.version, '0.2.0');
   assert.equal(source.displayName, 'onidot crew');
   const claude = await json(`${BASE}.claude-plugin/plugin.json`);
   const codex = await json(`${BASE}.codex-plugin/plugin.json`);
   for (const manifest of [claude, codex]) {
     assert.equal(manifest.name, 'onidot-crew');
-    assert.equal(manifest.version, '0.1.0');
+    assert.equal(manifest.version, '0.2.0');
     assert.equal(manifest.skills, './skills/');
   }
   assert.equal('hooks' in claude, false);
@@ -50,9 +50,9 @@ test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·스크립
   assert.equal(await exists(`${BASE}.mcp.json`), false);
 });
 
-test('crew 스킬 14개는 원본과 같고 front matter를 가진다', async () => {
+test('crew 스킬 15개는 원본과 같고 front matter를 가진다', async () => {
   const source = await json('source/crew.json');
-  assert.deepEqual(source.skills, ['plan', 'run', 'research', 'verify', 'resume', 'delegate', 'explore-domain', 'spec-first', 'tdd', 'debugging', 'review-work', 'frontend', 'plain-writing', 'setup-crew']);
+  assert.deepEqual(source.skills, ['plan', 'run', 'research', 'verify', 'resume', 'work-record', 'delegate', 'explore-domain', 'spec-first', 'tdd', 'debugging', 'review-work', 'frontend', 'plain-writing', 'setup-crew']);
   const dirs = (await readdir(new URL(`${BASE}skills/`, root))).sort();
   assert.deepEqual(dirs, [...source.skills].sort());
   for (const skill of source.skills) {
@@ -134,7 +134,7 @@ test('crew는 Claude 훅 없이 Codex SessionStart 훅 하나만 둔다', async 
   assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/codex/session-start.json"');
   const context = await json(`${BASE}codex/session-start.json`);
   assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.1.0'));
+  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.2.0'));
   assert.ok(!context.hookSpecificOutput.additionalContext.includes('{{version}}'));
 });
 
@@ -144,9 +144,9 @@ test('두 marketplace와 catalog는 onidot과 onidot-crew를 함께 싣는다', 
   assert.deepEqual(codex.plugins.find((p) => p.name === 'onidot-crew').source, { source: 'local', path: './plugins/onidot-crew' });
   const entry = claude.plugins.find((p) => p.name === 'onidot-crew');
   assert.equal(entry.source, './plugins/onidot-crew');
-  assert.equal(entry.version, '0.1.0');
+  assert.equal(entry.version, '0.2.0');
   assert.deepEqual((await json('catalog.json')).products.find((p) => p.id === 'crew'),
-    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.1.0' });
+    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.2.0' });
 });
 
 // 원본 복사본에서 생성기를 돌려 잘못된 crew 정의를 생성 전에 거부하는지 본다.
