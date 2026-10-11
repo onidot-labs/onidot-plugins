@@ -33,31 +33,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Agent|Task|SendMessage",
+        "matcher": "Agent|Task",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs\" hook post-agent 2>/dev/null || true"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs\" hook stop 2>/dev/null || true"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs\" hook user-prompt 2>/dev/null || true"
           }
         ]
       }
