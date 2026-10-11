@@ -508,3 +508,29 @@ test('ids는 잘못된 개수를 거부한다', () => {
     assert.equal(r.status, 2, `${bad}: ${r.stderr}`);
   }
 });
+test('newTsids는 난수 부분이 넘치면 다음 밀리초로 올리고 겹치지 않는다', async () => {
+  const { newTsids } = await import(script);
+  const now = Date.UTC(2026, 9, 11);
+  const ids = newTsids(4, now, 0x3ffffe);
+  assert.equal(new Set(ids).size, 4);
+  assert.deepEqual([...ids].sort(), ids, '단조 증가');
+  const parts = ids.map((id) => [Number(decodeTsid(id) >> 22n), Number(decodeTsid(id) & 0x3fffffn)]);
+  const ms = now - 1577836800000;
+  assert.deepEqual(parts, [[ms, 0x3ffffe], [ms, 0x3fffff], [ms + 1, 0], [ms + 1, 1]]);
+});
+// Codex처럼 플러그인 경로를 모르는 호스트가 쓰는 work-record의 한 줄 발급 명령도 서버 형식이어야 한다.
+test('work-record 스킬의 한 줄 단계 ID 발급 명령은 서버 형식의 겹치지 않는 ID를 낸다', async () => {
+  const skill = await readFile(join(root, 'source/crew/skills/work-record/SKILL.md'), 'utf8');
+  const line = skill.split('\n').map((l) => l.trim()).find((l) => l.startsWith("node -e '"));
+  assert.ok(line, '한 줄 명령을 찾지 못했다');
+  const r = spawnSync('/bin/sh', ['-c', line.replace(/ 5$/, ' 30')], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(r.status, 0, r.stderr);
+  const ids = r.stdout.trim().split(' ');
+  assert.equal(ids.length, 30);
+  assert.equal(new Set(ids).size, 30);
+  for (const id of ids) {
+    assert.ok(isTsid(id), id);
+    const ms = Number(decodeTsid(id) >> 22n) + 1577836800000;
+    assert.ok(Math.abs(ms - Date.now()) < 60_000, id);
+  }
+});

@@ -46,9 +46,9 @@ export const encodeTsid = (u) => {
   return s;
 };
 // 한 번에 여러 개를 만들 때는 난수 부분을 이어 붙여 같은 밀리초 안에서도 겹치지 않게 한다.
-export function newTsids(count, now = Date.now()) {
+export function newTsids(count, now = Date.now(), seed = randomBytes(3).readUIntBE(0, 3) & 0x3fffff) {
   const ms = BigInt(now) - TSID_EPOCH;
-  let rand = BigInt(randomBytes(3).readUIntBE(0, 3) & 0x3fffff);
+  const rand = BigInt(seed);
   const out = [];
   for (let i = 0; i < count; i++) {
     const r = (rand + BigInt(i)) & 0x3fffffn;
@@ -154,7 +154,7 @@ const hooks = {
     // 서브에이전트 세션에는 알리지 않는다. 작업 기록 쓰기는 메인만 한다.
     if (typeof ctx.input.agent_id === 'string' && ctx.input.agent_id) return;
     const prefix = `node ${shellQuote(SCRIPT)} <명령> --data ${shellQuote(ctx.data)} --claude-session ${shellQuote(ctx.sid)}`;
-    const context = `onidot crew 흐름 명령 접두사(work-record 스킬 3절 8번의 <flow>): ${prefix}\n<명령>은 start|pending|ack|unstage|status|stop 중 하나입니다.`;
+    const context = `onidot crew 흐름 명령 접두사(work-record 스킬 3절 8번의 <flow>): ${prefix}\n<명령>은 start|pending|ack|unstage|status|stop|ids 중 하나입니다.`;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } }));
   },
   'subagent-start'(ctx) {

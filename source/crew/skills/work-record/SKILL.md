@@ -28,7 +28,10 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
    - `completionConditions`: 1개 이상. `{ "kind": "done", "target": { "action": "<무엇을 끝내나>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }`. 대상 해시 없이 action만 둔 조건은 요구 증거가 `VERIFICATION`이어야 독립 검토(범위 검토)로 충족된다. `approvalRequired`가 true이면 해시 없이는 충족할 수 없으므로 항상 false로 둔다. 단계 완료 조건과 작업의 범위(action) 조건은 어떤 종류의 증거든 그 범위의 묶음이 되며 독립 검토 판정이 정한다. 작업 수준 완료 기준(`acceptanceCriteria`)은 판정만으로 충족되지 않는다. 증거 종류를 고르는 법은 7절 20번, 기준 검사는 21번이다.
    - `stages`: 계획의 단계마다 `{ "title": "<단계>", "required": true, "acceptanceCriteria": [], "completionConditions": [{ "kind": "done", "target": { "action": "<단계>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }] }`
    - `links`: 계획의 기준 묶음(`onidot-crew:spec-first` 2절)의 기준 문서와 기존 조사를 넣는다. 항목마다 `{ "kind": "URL", "url": "<문서 주소>" }`로 쓴다. Wiki 페이지도 페이지 주소를 `URL`로 넣는다(`WIKI_PAGE` 종류는 읽기 권한 검사에서 기록한 사람에게도 가려질 수 있다). 기준을 찾아봤는데 없었으면 비워 두고 계획서에 찾아본 곳을 적는다.
-   - 계획의 선행 관계를 그대로 남긴다. 작업 화면의 흐름 그래프는 이 의존으로 묶음 열과 간선을 그리므로, 의존이 있는 계획을 의존 없이 올리지 않는다. 단계마다 `id`를 주고 `predecessorStageIds`로 잇는다. id는 서버 형식의 13자 TSID여야 하므로 직접 지어내지 않고 `<flow> ids --count <단계 수>`(Claude Code, 8번의 명령 접두사)나 `node '<플러그인 루트>/scripts/flow-queue.mjs' ids --count <단계 수>`로 발급받는다. `ids`는 세션·데이터 경로 없이 동작한다. 발급할 수 없으면 `id`를 비우고 의존을 계획서에 적은 뒤 그 사실을 보고한다.
+   - 계획의 선행 관계를 그대로 남긴다. 작업 화면의 흐름 그래프는 이 의존으로 묶음 열과 간선을 그리므로, 의존이 있는 계획을 의존 없이 올리지 않는다. 단계마다 `id`를 주고 `predecessorStageIds`로 잇는다. id는 서버 형식의 13자 TSID여야 하므로 직접 지어내지 않고 발급받는다. Claude Code에서 8번의 명령 접두사가 있으면 `<flow> ids --count <단계 수>`를 쓴다. 접두사가 없거나 Codex면 아래 한 줄을 Bash로 실행한다(끝의 숫자가 단계 수, 출력은 공백으로 나눈 ID). 작업을 만들 때마다 새로 발급하고, 응답을 못 받아 다시 보낼 때는 같은 ID와 같은 `idempotencyKey`로 보낸다. 발급할 수 없으면 `id`를 비우고 의존을 계획서에 적은 뒤 그 사실을 보고한다.
+     ```bash
+     node -e 'const A="0123456789abcdefghjkmnpqrstvwxyz",n=+process.argv[1],b=(BigInt(Date.now())-1577836800000n)<<22n,r=BigInt(Math.floor(Math.random()*4194304)),o=[];for(let i=0;i<n;i++){let u=b+r+BigInt(i),s="";for(let k=60;k>=0;k-=5)s+=A[Number((u>>BigInt(k))&31n)];o.push(s)}console.log(o.join(" "))' 5
+     ```
 2. 응답의 `entityId`(작업 ID)와 `version`을 기억한다. 만든 직후 상태는 `PAUSED`·`QUESTION`이다.
 3. 계획서를 Wiki에 따로 두었다면 작업 기록에는 같은 내용을 다시 쓰지 않고 계획서 주소도 `links`에 넣는다.
 
