@@ -29,13 +29,13 @@ const splitAgent = (markdown) => {
 test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·완료 기록 검사를 두지 않는다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.name, 'onidot-crew');
-  assert.equal(source.version, '0.5.2');
+  assert.equal(source.version, '0.5.3');
   assert.equal(source.displayName, 'onidot crew');
   const claude = await json(`${BASE}.claude-plugin/plugin.json`);
   const codex = await json(`${BASE}.codex-plugin/plugin.json`);
   for (const manifest of [claude, codex]) {
     assert.equal(manifest.name, 'onidot-crew');
-    assert.equal(manifest.version, '0.5.2');
+    assert.equal(manifest.version, '0.5.3');
     assert.equal(manifest.skills, './skills/');
   }
   assert.equal(claude.hooks, './claude/hooks.json');
@@ -144,7 +144,7 @@ test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionSt
   assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/codex/session-start.json"');
   const context = await json(`${BASE}codex/session-start.json`);
   assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.5.2'));
+  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.5.3'));
   assert.ok(!context.hookSpecificOutput.additionalContext.includes('{{version}}'));
 });
 
@@ -154,9 +154,9 @@ test('두 marketplace와 catalog는 onidot과 onidot-crew를 함께 싣는다', 
   assert.deepEqual(codex.plugins.find((p) => p.name === 'onidot-crew').source, { source: 'local', path: './plugins/onidot-crew' });
   const entry = claude.plugins.find((p) => p.name === 'onidot-crew');
   assert.equal(entry.source, './plugins/onidot-crew');
-  assert.equal(entry.version, '0.5.2');
+  assert.equal(entry.version, '0.5.3');
   assert.deepEqual((await json('catalog.json')).products.find((p) => p.id === 'crew'),
-    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.5.2' });
+    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.5.3' });
 });
 
 // 원본 복사본에서 생성기를 돌려 잘못된 crew 정의를 생성 전에 거부하는지 본다.
@@ -352,6 +352,28 @@ test('work-record 스킬은 리뷰 지적(비활성 정리·기계 검사·구 �
   // 마무리: 흐름 대기열 끄기와 열린 검토 세션 닫기.
   assert.ok(/25\.[^\n]*<flow> stop/.test(text), '25번 flow stop');
   assert.ok(/14\.[\s\S]*?15\.[^\n]*검토 세션/.test(text), '인계 때 검토 세션도 닫기');
+});
+
+test('work-record 스킬은 다건 배열 입력(stages·evidenceItems·verifications·events)과 실패·구 서버 대응을 담는다', async () => {
+  const text = await read('source/crew/skills/work-record/SKILL.md');
+  for (const needle of ['`stages`(1~20건)', '`evidenceItems`(1~50건)', '`verifications`(1~20건)', '`verificationIds`', '`evidenceIds`', '`itemIndex`', '`events` 배열']) {
+    assert.ok(text.includes(needle), `work-record에 ${needle} 없음`);
+  }
+  assert.ok(/전부 반영되거나 하나도 반영되지 않/.test(text));
+  assert.ok(/unexpected additional properties`에[^\n]*stages[^\n]*단건 형식으로 한 건씩/.test(text), '구 서버 단건 대체');
+  assert.ok(/itemIndex[^\n]*새 `idempotencyKey`/.test(text), '배열 실패 재전송은 새 키');
+  assert.ok(/같은 단계[^\n]*증거만/.test(text), 'evidenceItems는 같은 단계만');
+  assert.ok(/대기열 이벤트 묶음과는 섞지 않/.test(text));
+  // 구 서버는 알 수 없는 필드를 입력 스키마 검사로 거부한다(code=VALIDATION_FAILED가 아님).
+  assert.ok(/`input validation failed`이고 `unexpected additional properties`에 `stages`·`evidenceItems`·`verifications`/.test(text), '배열 필드 구 서버 판정');
+  assert.ok(/`input validation failed`이고 `unexpected additional properties`에 `description`/.test(text), 'description 구 서버 판정');
+  assert.ok(/\| `input validation failed` \(`unexpected additional properties`\) \|/.test(text), '오류표 전용 행');
+  assert.equal(/보냈더니 `VALIDATION_FAILED`가 알 수 없는 필드/.test(text), false);
+  // 배열이면 최상위 단건 필드를 같이 보내지 않는다. 거부된 배열 완료는 completed:false를 완료라 하지 않는다.
+  assert.ok(/`stageId`·`evidence`·`reason` 대신 `stages`/.test(text));
+  assert.ok(/최상위 `target`·`evidenceIds`·`evidenceSetHash`·`verdict`·`reason`을 쓰지 않는다/.test(text));
+  assert.ok(/배열이면 최상위 `evidence`를 쓰지 않는다/.test(text));
+  assert.ok(/`stages\[\]\.completed`가 false인 단계는 완료라고 보고하지 않는다/.test(text));
 });
 
 test('verify 스킬은 증거 기록 → 기록된 묶음 감사 → 판정 기록 → 완료 순서이고 gate 반환 어휘가 판정과 맞는다', async () => {

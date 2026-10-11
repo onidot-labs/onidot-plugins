@@ -74,13 +74,13 @@ test('진단 CLI는 명시한 별칭 등록과 로컬 OAuth metadata의 resource
   try {
     const endpoint = `http://127.0.0.1:${server.address().port}/mcp`;
     resource = endpoint;
-    const cache = join(dir, 'plugins/cache/onidot/onidot/0.15.7/.codex-plugin');
+    const cache = join(dir, 'plugins/cache/onidot/onidot/0.15.8/.codex-plugin');
     await mkdir(cache, { recursive: true });
-    await writeFile(join(cache, 'plugin.json'), JSON.stringify({ name: 'onidot', version: '0.15.7', mcpServers: {} }));
+    await writeFile(join(cache, 'plugin.json'), JSON.stringify({ name: 'onidot', version: '0.15.8', mcpServers: {} }));
     const mock = join(dir, 'codex.mjs');
     await writeFile(mock, `#!${process.execPath}\nconst args=process.argv.slice(2);\n` +
       `if(args.join(' ')==='plugin marketplace list --json') console.log(JSON.stringify({marketplaces:[{name:'onidot',marketplaceSource:{sourceType:'git',source:'https://github.com/onidot-labs/onidot-plugins'}}]}));\n` +
-      `else if(args.join(' ')==='plugin list --marketplace onidot --json') console.log(JSON.stringify({installed:[{pluginId:'onidot@onidot',version:'0.15.7',enabled:true}]}));\n` +
+      `else if(args.join(' ')==='plugin list --marketplace onidot --json') console.log(JSON.stringify({installed:[{pluginId:'onidot@onidot',version:'0.15.8',enabled:true}]}));\n` +
       `else if(args.join(' ')==='mcp get onidot-work --json') console.log(JSON.stringify({enabled:true,transport:{type:'streamable_http',url:${JSON.stringify(endpoint)}}}));\n` +
       `else process.exit(9);\n`, { mode: 0o700 });
     const args = [new URL('../scripts/verify-codex-oauth.mjs', import.meta.url).pathname, '--alias', 'work', '--mcp-url', endpoint];
@@ -92,4 +92,59 @@ test('진단 CLI는 명시한 별칭 등록과 로컬 OAuth metadata의 resource
     await assert.rejects(run(process.execPath, args, { env }), error => error.code === 1 && /OAUTH_RESOURCE_MISMATCH/.test(error.stderr));
     assert.equal(calls, 2);
   } finally { server.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('고정 실행기 경로는 정상이고 옛 버전 경로는 진단 코드로 구분한다', async () => {
+  const { assessHelperCommand } = await import('../scripts/verify-codex-oauth.mjs');
+  const home = '/h/.codex';
+  const fixed = `ONIDOT_ALIAS=dev node "${home}/onidot-oauth/bin/oauth-helper.mjs" headers`;
+  assert.deepEqual(assessHelperCommand(fixed, { codexHome: home, exists: () => true, hasTarget: () => true }), []);
+  assert.deepEqual(assessHelperCommand(fixed, { codexHome: home, exists: () => false }), ['OAUTH_HELPER_LAUNCHER_MISSING']);
+  const old = `node "${home}/plugins/cache/onidot/onidot/0.15.0/scripts/oauth-helper.mjs" headers`;
+  assert.deepEqual(assessHelperCommand(old, { codexHome: home, exists: () => false }), ['OAUTH_HELPER_VERSIONED_PATH_GONE']);
+  assert.deepEqual(assessHelperCommand(old, { codexHome: home, exists: () => true }), ['OAUTH_HELPER_VERSIONED_PATH']);
+  assert.deepEqual(assessHelperCommand(undefined, { codexHome: home, exists: () => true }), []);
+});
+
+test('assessCodexOAuth는 helperCommand 진단을 합산한다', async () => {
+  const home = '/h/.codex';
+  const failures = assessCodexOAuth({ ...expected, helperCommand: `node "${home}/plugins/cache/onidot/onidot/0.15.0/scripts/oauth-helper.mjs" headers`, codexHome: home, helperExists: () => false });
+  assert.deepEqual(failures, ['OAUTH_HELPER_VERSIONED_PATH_GONE']);
+});
+
+test('config.toml에서 지정한 연결 표의 http_headers_helper만 읽는다', async () => {
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { readHelperCommand } = await import('../scripts/verify-codex-oauth.mjs');
+  const dir = await mkdtemp(join(tmpdir(), 'onidot-toml-'));
+  try {
+    const path = join(dir, 'config.toml');
+    await writeFile(path, `[mcp_servers.onidot-work]\nhttp_headers_helper = 'other'\n\n[mcp_servers.onidot-dev]\nurl = "x"\nhttp_headers_helper = 'node "/a/b.mjs" headers'\n`);
+    assert.equal(await readHelperCommand(path, 'onidot-dev'), 'node "/a/b.mjs" headers');
+    assert.equal(await readHelperCommand(path, 'onidot-none'), undefined);
+    assert.equal(await readHelperCommand(join(dir, 'missing.toml'), 'onidot-dev'), undefined);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('고정 실행기가 있어도 고를 대상이 없으면 ONIDOT_HELPER_NOT_FOUND를 진단한다', async () => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { assessHelperCommand, adviceFor, defaultAdvice } = await import('../scripts/verify-codex-oauth.mjs');
+  const home = await mkdtemp(join(tmpdir(), 'onidot-doctor-'));
+  try {
+    const bin = join(home, 'onidot-oauth/bin');
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(bin, 'oauth-helper.mjs'), '');
+    const cmd = `node "${bin}/oauth-helper.mjs" headers`;
+    assert.deepEqual(assessHelperCommand(cmd, { codexHome: home }), ['ONIDOT_HELPER_NOT_FOUND']);
+    await writeFile(join(bin, 'oauth-helper-fallback.mjs'), '');
+    assert.deepEqual(assessHelperCommand(cmd, { codexHome: home }), []);
+    // 안내가 섞이면 helper 안내와 기본 안내를 모두 낸다.
+    const mixed = adviceFor(['OAUTH_RESOURCE_MISMATCH', 'ONIDOT_HELPER_NOT_FOUND']);
+    assert.ok(mixed.includes('ONIDOT_HELPER_NOT_FOUND') && mixed.includes(defaultAdvice));
+    assert.equal(adviceFor(['ONIDOT_HELPER_NOT_FOUND']).includes(defaultAdvice), false);
+    assert.equal(adviceFor(['OAUTH_RESOURCE_MISMATCH']), defaultAdvice);
+  } finally { await rm(home, { recursive: true, force: true }); }
 });

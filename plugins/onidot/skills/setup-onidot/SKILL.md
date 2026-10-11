@@ -51,7 +51,7 @@ codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
 codex plugin add onidot@onidot
 ```
 
-기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.7`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
+기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.8`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
 
 인스턴스는 플러그인과 별도로 등록한다.
 
@@ -78,27 +78,38 @@ url = "<회사 로컬 MCP_URL>"
 
 여러 로컬 세션의 일회용 refresh를 직렬화해야 한다면 Node.js 24 이상과 `http_headers_helper`를 지원하는 로컬 macOS/Linux Codex에서 패키지 helper를 사용할 수 있다. 네이티브 OAuth와 helper 중 하나만 해당 연결의 인증원으로 쓴다. 기존 네이티브 인증을 자동으로 지우지 않는다. Windows·원격 실행은 미검증이다.
 
+먼저 고정 실행기를 설치한다. 설치 명령은 플러그인의 `scripts/oauth-helper-install.mjs`이며 `${CODEX_HOME:-$HOME/.codex}/onidot-oauth/bin/`에 버전과 무관한 실행기(`oauth-helper.mjs`)와 도우미 사본을 놓는다. 실행기는 실행할 때마다 플러그인 캐시에서 semver가 가장 높은 도우미를 골라 실행하고, 캐시에 없으면 사본으로 실행한다. 그래서 플러그인을 갱신해도 config.toml의 경로는 바뀌지 않는다. 설치 기록의 해시와 같은 파일만 갱신하고 사용자가 고친 파일은 충돌로 남기며 종료 코드 1로 알린다. 이 명령은 config.toml을 고치지 않는다.
+
 ```sh
-export ONIDOT_ALIAS="$ALIAS"
-export ONIDOT_APP_URL="$APP_URL"
-export ONIDOT_MCP_URL="$MCP_URL"
-# READ 연결이면 read scope만 요청한다. 승인 범위는 사람이 직접 선택한다.
-export ONIDOT_SCOPE='onidot:wiki:read offline_access'
-HELPER="${CODEX_HOME:-$HOME/.codex}/plugins/cache/onidot/onidot/0.15.7/scripts/oauth-helper.mjs"
-# 사람이 직접 로그인한다. headers는 비밀 헤더를 출력하므로 진단용으로 실행하지 않는다.
-node "$HELPER" login
-node "$HELPER" status
+# 설치된 플러그인 캐시의 최신 버전에서 한 번 실행한다(이 안내에는 버전을 적지 않는다).
+f=$(ls -d "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/onidot/onidot/*/scripts/oauth-helper-install.mjs 2>/dev/null | sort -V | tail -1)
+if [ -n "$f" ]; then node "$f"; else echo "onidot 플러그인을 먼저 설치하세요" >&2; false; fi
+# stdout에 config.toml에 넣을 http_headers_helper 한 줄이 나온다. 진행 내용은 stderr에 나온다.
 ```
 
-WRITE가 승인된 연결의 scope는 `onidot:wiki:read onidot:wiki:write offline_access`다. helper를 연결에 쓸 때는 해당 `mcp_servers` 항목의 `http_headers_helper` 명령 안에 동일한 공개 `ONIDOT_ALIAS`·`ONIDOT_APP_URL`·`ONIDOT_MCP_URL`·`ONIDOT_SCOPE` 값을 명시한다. 새 프로세스가 위 셸의 export를 자동 상속한다고 가정하지 않는다.
+출력된 줄의 `<별칭>`·`<APP_URL>`·`<MCP_URL>`·`<SCOPE>`를 연결 값으로 채워 해당 `mcp_servers` 항목에 넣는다. 경로는 출력된 절대경로를 그대로 쓴다. Codex는 helper를 환경변수를 비운 `sh -c`로 실행하므로 연결 값은 명령 안에 명시하고 셸 export나 `CODEX_HOME`을 상속한다고 가정하지 않는다. READ 연결은 scope `onidot:wiki:read offline_access`, WRITE가 승인된 연결은 `onidot:wiki:read onidot:wiki:write offline_access`를 쓰며 승인 범위는 사람이 직접 선택한다.
 
 ```toml
 [mcp_servers.onidot-dev]
 url = "<MCP_URL>"
-http_headers_helper = 'ONIDOT_ALIAS=home ONIDOT_APP_URL="<APP_URL>" ONIDOT_MCP_URL="<MCP_URL>" ONIDOT_SCOPE="onidot:wiki:read offline_access" node "<설치 경로>/scripts/oauth-helper.mjs" headers'
+http_headers_helper = 'ONIDOT_ALIAS=<별칭> ONIDOT_APP_URL="<APP_URL>" ONIDOT_MCP_URL="<MCP_URL>" ONIDOT_SCOPE="onidot:wiki:read offline_access" node "<설치 명령이 출력한 실행기 절대경로>" headers'
 ```
 
-기대 결과는 `status`의 `authenticated=true`다. helper는 연결 정보가 없으면 `ONIDOT_CONNECTION_REQUIRED`로 거부하고 기본 서버로 보내지 않는다. 별칭·앱·리소스·scope별로 새로운 로그인 상태와 잠금을 나누며 옛 helper의 토큰은 복사하지 않는다. scope의 옛 이름과 새 이름은 같은 권한이므로 같은 로그인 상태를 쓴다. 기존 `ONIDOT_SCOPE`의 옛 이름을 새 이름으로 바꿔도 다시 로그인하지 않는다. `OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED`·`OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED`면 사람이 같은 연결로 다시 로그인한다. `OAUTH_REFRESH_LOCKED`면 다른 갱신이 끝나길 기다리고 잠금 파일을 삭제하지 않는다. 0.14.0 이하 helper는 새 scope 이름의 갱신 응답을 `INVALID_OAUTH_TOKEN_RESPONSE`로 거부한다. 새 이름을 내는 서버를 쓰기 전에 플러그인을 갱신하고 `http_headers_helper`의 설치 경로를 바꾼다. 로그인 상태는 그대로 쓴다. 이미 거부됐으면 사람이 `login`을 다시 실행한다.
+그다음 사람이 직접 로그인하고 상태를 확인한다. `headers`는 비밀 헤더를 출력하므로 진단용으로 실행하지 않는다. 같은 연결 값을 환경변수로 준다.
+
+```sh
+export ONIDOT_ALIAS="$ALIAS" ONIDOT_APP_URL="$APP_URL" ONIDOT_MCP_URL="$MCP_URL"
+export ONIDOT_SCOPE='onidot:wiki:read offline_access'
+HELPER="${CODEX_HOME:-$HOME/.codex}/onidot-oauth/bin/oauth-helper.mjs"
+node "$HELPER" login
+node "$HELPER" status
+```
+
+기대 결과는 `status`의 `authenticated=true`다. helper는 연결 정보가 없으면 `ONIDOT_CONNECTION_REQUIRED`로 거부하고 기본 서버로 보내지 않는다. 별칭·앱·리소스·scope별로 새로운 로그인 상태와 잠금을 나누며 옛 helper의 토큰은 복사하지 않는다. scope의 옛 이름과 새 이름은 같은 권한이므로 같은 로그인 상태를 쓴다. 기존 `ONIDOT_SCOPE`의 옛 이름을 새 이름으로 바꿔도 다시 로그인하지 않는다. `OAUTH_REFRESH_UNCERTAIN_RELOGIN_REQUIRED`·`OAUTH_RESOURCE_CHANGED_RELOGIN_REQUIRED`면 사람이 같은 연결로 다시 로그인한다. `OAUTH_REFRESH_LOCKED`면 다른 갱신이 끝나길 기다리고 잠금 파일을 삭제하지 않는다. 실행기가 도우미를 찾지 못하면 `ONIDOT_HELPER_NOT_FOUND`와 종료 코드 1을 내므로 설치 명령을 다시 실행한다.
+
+**고정 경로와 갱신.** 고정 경로는 플러그인을 갱신한 뒤에도 그대로이므로 config.toml을 다시 고치지 않는다. 새 도우미 동작이 필요하면(예: 0.14.0 이하 도우미는 새 scope 이름의 갱신 응답을 `INVALID_OAUTH_TOKEN_RESPONSE`로 거부한다) 플러그인만 갱신하고 설치 명령을 다시 실행해 사본을 새로 한다. 로그인 상태는 `${CODEX_HOME:-$HOME/.codex}/onidot-oauth/<해시>/`에 있어 이미 로그인했다면 다시 로그인하지 않아도 된다. 다만 `CODEX_HOME`이 기본(`~/.codex`)이 아니면 다시 로그인이 필요할 수 있다.
+
+**옛 설정 이전.** `http_headers_helper`가 `plugins/cache/onidot/onidot/<버전>/scripts/oauth-helper.mjs` 같은 버전별 경로를 가리키는 기존 설정은 플러그인 갱신으로 그 폴더가 지워지면 헤더 없이 요청해 서버에 401이 쌓이고 Codex는 직접 연결 대신 느린 중계만 쓰게 된다. 설치 명령을 실행한 뒤 해당 항목의 경로만 출력된 고정 경로로 바꾼다. 별칭·주소·scope와 로그인 상태는 그대로 쓴다. `npm run verify:codex`는 이 경로를 `OAUTH_HELPER_VERSIONED_PATH_GONE`(이미 없음)·`OAUTH_HELPER_VERSIONED_PATH`(아직 있으나 갱신 시 사라짐)로 알린다.
 
 ### Claude Code 독립 연결
 
@@ -138,7 +149,7 @@ ChatGPT 계정 사용자 지정 앱도 선택한 인스턴스의 공개 MCP_URL�
 
 ## 완료 hooks 확인
 
-- 플러그인 0.15.7의 완료 검사는 `oni recording-check --client claude|codex`를 사용한다. **이 기능이 포함된 oni와 함께 업데이트**한다(출시번호 미정). Node/Python 설치나 추가 LLM 호출이 필요하지 않다. oni 미설치·구버전·검사 실패이면 고정된 누락 확인 불가 안내를 보여 주며 중단하거나 저장 성공으로 판단하지 않는다. `onidot-guide`의 최종 답변 전 검토를 적용하고 `remember` 성공을 확인하지 못한 기록은 미저장으로 알린다.
+- 플러그인 0.15.8의 완료 검사는 `oni recording-check --client claude|codex`를 사용한다. **이 기능이 포함된 oni와 함께 업데이트**한다(출시번호 미정). Node/Python 설치나 추가 LLM 호출이 필요하지 않다. oni 미설치·구버전·검사 실패이면 고정된 누락 확인 불가 안내를 보여 주며 중단하거나 저장 성공으로 판단하지 않는다. `onidot-guide`의 최종 답변 전 검토를 적용하고 `remember` 성공을 확인하지 못한 기록은 미저장으로 알린다.
 - Claude Code는 기존 `claude/hooks.json`, Codex는 `codex/hooks.json`을 각 manifest에 명시하여 SessionStart와 Stop command를 실행한다. 양쪽에서 자동 탐지할 `hooks/hooks.json`은 생성하지 않아 중복 검사를 막는다. Codex는 `PLUGIN_ROOT`, Claude는 `CLAUDE_PLUGIN_ROOT`로 설치 경로를 읽는다.
 - Codex는 설치만으로 hooks를 신뢰하지 않는다. 사용자가 `/hooks`에서 현재 정의를 직접 검토하고 trust해야 한다. 변경한 정의에는 재검토가 필요하며 신뢰 절차를 우회하지 않는다. 사용자 설정 파일을 자동 수정하지 않는다.
 - hooks를 지원하지 않는 앱은 공통 지침만 적용한다. 실제 클라이언트 hook 실행과 저장 성공은 별도로 검증하며 설치·패키징 성공으로 대체하지 않는다. 대화 원문 전체나 비밀은 기록하지 않고 로컬 메모리로 대체 저장하지 않는다.

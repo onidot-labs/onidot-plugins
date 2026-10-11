@@ -184,13 +184,12 @@ test('Wiki 스킬은 요청자별 초안 계약을 안내한다(옛 서버 #337)
   assert.ok(lineWith('`includeDrafts=true`는 요청자(소유자) 자신의 초안만').includes('초안 전체 백업이라고 보고하지 않는다'));
 });
 
-test('설치 안내의 Codex 캐시 경로는 현재 제품 버전을 가리킨다', async () => {
-  const source = await readJson('source/wiki.json');
+test('설치 안내의 Codex helper 경로에는 버전 문자열이 없다', async () => {
   for (const path of ['README.md', 'source/skills/setup-onidot/SKILL.md']) {
     const text = await readText(path);
-    const versions = [...text.matchAll(/onidot\/(\d+\.\d+\.\d+)\/scripts/g)].map((match) => match[1]);
-    assert.ok(versions.length > 0, path);
-    assert.deepEqual([...new Set(versions)], [source.version], path);
+    assert.ok(!/onidot\/\d+\.\d+\.\d+\/scripts/.test(text), path);
+    assert.ok(text.includes('onidot-oauth/bin/oauth-helper.mjs'), path);
+    assert.ok(text.includes('oauth-helper-install.mjs'), path);
   }
 });
 
