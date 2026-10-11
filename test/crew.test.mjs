@@ -360,10 +360,20 @@ test('work-record 스킬은 다건 배열 입력(stages·evidenceItems·verifica
     assert.ok(text.includes(needle), `work-record에 ${needle} 없음`);
   }
   assert.ok(/전부 반영되거나 하나도 반영되지 않/.test(text));
-  assert.ok(/알 수 없는 필드[^\n]*(stages|evidenceItems)[^\n]*단건 형식으로 한 건씩/.test(text), '구 서버 단건 대체');
+  assert.ok(/unexpected additional properties`에[^\n]*stages[^\n]*단건 형식으로 한 건씩/.test(text), '구 서버 단건 대체');
   assert.ok(/itemIndex[^\n]*새 `idempotencyKey`/.test(text), '배열 실패 재전송은 새 키');
   assert.ok(/같은 단계[^\n]*증거만/.test(text), 'evidenceItems는 같은 단계만');
   assert.ok(/대기열 이벤트 묶음과는 섞지 않/.test(text));
+  // 구 서버는 알 수 없는 필드를 입력 스키마 검사로 거부한다(code=VALIDATION_FAILED가 아님).
+  assert.ok(/`input validation failed`이고 `unexpected additional properties`에 `stages`·`evidenceItems`·`verifications`/.test(text), '배열 필드 구 서버 판정');
+  assert.ok(/`input validation failed`이고 `unexpected additional properties`에 `description`/.test(text), 'description 구 서버 판정');
+  assert.ok(/\| `input validation failed` \(`unexpected additional properties`\) \|/.test(text), '오류표 전용 행');
+  assert.equal(/보냈더니 `VALIDATION_FAILED`가 알 수 없는 필드/.test(text), false);
+  // 배열이면 최상위 단건 필드를 같이 보내지 않는다. 거부된 배열 완료는 completed:false를 완료라 하지 않는다.
+  assert.ok(/`stageId`·`evidence`·`reason` 대신 `stages`/.test(text));
+  assert.ok(/최상위 `target`·`evidenceIds`·`evidenceSetHash`·`verdict`·`reason`을 쓰지 않는다/.test(text));
+  assert.ok(/배열이면 최상위 `evidence`를 쓰지 않는다/.test(text));
+  assert.ok(/`stages\[\]\.completed`가 false인 단계는 완료라고 보고하지 않는다/.test(text));
 });
 
 test('verify 스킬은 증거 기록 → 기록된 묶음 감사 → 판정 기록 → 완료 순서이고 gate 반환 어휘가 판정과 맞는다', async () => {
