@@ -51,7 +51,7 @@ codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
 codex plugin add onidot@onidot
 ```
 
-기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.7`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
+기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.8`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
 
 인스턴스는 플러그인과 별도로 등록한다.
 
