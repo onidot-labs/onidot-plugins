@@ -27,9 +27,10 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
    - `acceptanceCriteria`: 1개 이상. `{ "text": "<완료 기준>", "verificationMethod": "<TEST | COMMAND | COMMIT | MANUAL_CHECK | WIKI_PUBLISH 중 일의 성격에 맞는 것>" }`. git이 없는 일이나 문서·설정·조사 같은 일은 `MANUAL_CHECK`를 쓴다. 이 확인 방법은 계획 때 반드시 올릴 수 있는 종류로 고른다. 커밋·푸시하지 않을 수 있는 일(회사 작업 등)은 `COMMIT`을 고르지 않고 `MANUAL_CHECK`를 쓴다. 알려진 실패가 남을 수 있는 전체 검사는 `TEST` 대신 `MANUAL_CHECK`로 둔다. 작업 수준 완료 기준은 서버가 기계적으로 검사하므로 21번의 조건을 맞춰 올릴 수 있어야 한다
    - `completionConditions`: 1개 이상. `{ "kind": "done", "target": { "action": "<무엇을 끝내나>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }`. 대상 해시 없이 action만 둔 조건은 요구 증거가 `VERIFICATION`이어야 독립 검토(범위 검토)로 충족된다. `approvalRequired`가 true이면 해시 없이는 충족할 수 없으므로 항상 false로 둔다. 단계 완료 조건과 작업의 범위(action) 조건은 어떤 종류의 증거든 그 범위의 묶음이 되며 독립 검토 판정이 정한다. 작업 수준 완료 기준(`acceptanceCriteria`)은 판정만으로 충족되지 않는다. 증거 종류를 고르는 법은 7절 20번, 기준 검사는 21번이다.
    - `stages`: 계획의 단계마다 `{ "title": "<단계>", "required": true, "acceptanceCriteria": [], "completionConditions": [{ "kind": "done", "target": { "action": "<단계>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }] }`
-   - 단계 의존을 남기려면 단계마다 `id`를 직접 주고 `predecessorStageIds`로 잇는다. id는 13자 소문자 TSID여야 한다. 의존이 없으면 `id`를 비운다.
+   - `links`: 계획의 기준 묶음(`onidot-crew:spec-first` 2절)의 기준 문서와 기존 조사를 넣는다. 항목마다 `{ "kind": "URL", "url": "<문서 주소>" }`로 쓴다. Wiki 페이지도 페이지 주소를 `URL`로 넣는다(`WIKI_PAGE` 종류는 읽기 권한 검사에서 기록한 사람에게도 가려질 수 있다). 기준을 찾아봤는데 없었으면 비워 두고 계획서에 찾아본 곳을 적는다.
+   - 계획의 선행 관계를 그대로 남긴다. 작업 화면의 흐름 그래프는 이 의존으로 묶음 열과 간선을 그리므로, 의존이 있는 계획을 의존 없이 올리지 않는다. 단계마다 `id`를 주고 `predecessorStageIds`로 잇는다. id는 서버 형식의 13자 TSID여야 하므로 직접 지어내지 않고 `<flow> ids --count <단계 수>`(Claude Code, 8번의 명령 접두사)나 `node '<플러그인 루트>/scripts/flow-queue.mjs' ids --count <단계 수>`로 발급받는다. `ids`는 세션·데이터 경로 없이 동작한다. 발급할 수 없으면 `id`를 비우고 의존을 계획서에 적은 뒤 그 사실을 보고한다.
 2. 응답의 `entityId`(작업 ID)와 `version`을 기억한다. 만든 직후 상태는 `PAUSED`·`QUESTION`이다.
-3. 계획서를 Wiki에 따로 두었다면 작업 기록에는 같은 내용을 다시 쓰지 않는다.
+3. 계획서를 Wiki에 따로 두었다면 작업 기록에는 같은 내용을 다시 쓰지 않고 계획서 주소도 `links`에 넣는다.
 
 ## 2. 실행을 시작할 때
 
@@ -65,8 +66,9 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
    - 이벤트 모양: `eventId`는 대기열 항목마다 고정된 `cc-flow:<항목 ID>`다. `producerSeq`와 `stageId`는 그 항목을 처음 꺼낼 때 정해져 저장된다. 그래서 다시 꺼내면 같은 이벤트와 같은 키가 나오고, 다시 보내도 중복되지 않는다. 키는 이벤트 내용에서 만들므로 항목이 빠지거나 단계가 떨어지면 키도 바뀐다. 출력은 한 번에 100건까지이며 `more`가 0보다 크면 지운 뒤 다시 꺼낸다.
    - 지우기: 보내기에 성공하면 `<flow> ack <출력의 ids>`로 지운다. 실패하면 지우지 않고 다음에 다시 꺼내 보낸다.
    - 묶음이 거부되면: `TARGET_MISMATCH`이면 계획에서 빠진 단계다. `<flow> unstage --stage <그 단계 ID>`로 단계 ID만 떼고 다시 꺼내 보낸다. `VALIDATION_FAILED`이면 금지 문자열에 걸린 항목을 찾아 그 항목 ID만 `<flow> ack`로 버리고 나머지를 다시 꺼내 보낸다. 훅은 걸리는 `role`을 빼고 걸리는 `agentId`의 항목은 적지 않지만, 서버 규칙이 바뀌었을 수 있다.
+   - 단계 ID 발급: `<flow> ids --count <개수>`는 서버 형식의 단계 ID를 `{ "ids": [...] }`로 출력한다(1절 1번). 대기열과 무관하다.
    - 상태와 끄기: `<flow> status`는 켜짐 여부·작업·남은 항목 수를 보인다. 인계를 남기고 이 대화에서 작업 기록을 그만둘 때(14·15번) `<flow> stop`을 실행한다. 버려도 될 때만 `--discard`를 붙인다.
-   - 종료 코드: 0 성공, 1 잠금을 못 얻음(잠시 뒤 다시 실행) 또는 예상 못 한 오류, 2 잘못된 인자, 3 꺼져 있음 또는 보내지 않은 항목이 남아 거부함.
+   - 종료 코드(공통): 0 성공, 1 잠금을 못 얻음(잠시 뒤 다시 실행) 또는 예상 못 한 오류, 2 잘못된 인자, 3 꺼져 있음 또는 보내지 않은 항목이 남아 거부함.
 9. 진행을 확인할 때는 `get_work_flow`(`workId`)를 부른다. `stages`의 `status`(`PENDING`·`READY`·`RUNNING`·`DONE`·`FAILED`·`BLOCKED`·`VERIFIED`)와 `subagents`, `lastSeq`를 돌려준다. 다음 확인 때 `afterSeq`에 이전 `lastSeq`를 넣으면 그 뒤에 기록된 흐름 이벤트만 `events`로 온다. `hasMoreEvents`가 true이면 마지막 이벤트의 `id`로 이어 읽는다. 보낸 이벤트가 상태에 보이지 않으면 보내기 응답의 `clockSkew`를 확인한다.
 10. 계획이 바뀌면 `edit_work_checklist`(`operation`: `ADD`·`REMOVE`·`RENAME`, `reason` 필수)로 단계를 고친다.
 11. 단계를 시작하기 전에 `get_work`로 두 가지를 본다.
@@ -87,7 +89,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 
 16. `list_works`를 `state`: `IN_PROGRESS`, 이어서 `PAUSED`로 불러 후보를 고르고 `get_work`로 상태·단계·담당 세대를 읽는다.
 17. 2의 4번처럼 새 세션을 연다.
-18. `get_work_resume_context`(`sessionId`)로 인계와 다시 확인할 항목을 읽고, 다시 확인할 항목부터 확인한다.
+18. `get_work_resume_context`(`sessionId`)로 인계와 다시 확인할 항목을 읽고, 다시 확인할 항목부터 확인한다. 이어서 `get_work`의 `links`에 있는 기준 문서 원문을 읽는다. 인계 요약만 보고 기준을 짐작하지 않는다. 이후 위임에는 그 원문으로 기준 묶음을 다시 만들어 넘긴다.
 19. 담당을 이어 받는다.
     - 인계가 있고 이전 세션이 담당을 쥐고 있으면 `accept_handoff`를 쓴다. `handoffId`, `handoffVersion`, `expectedVersion`은 `handoffVersion`과 같게, `claim`에는 `claim_work`와 같은 값(`spaceId`, `expectedVersion`은 작업 version, 별도 `idempotencyKey`, `workId`, 새 `sessionId`, `role`, `expectedClaimGeneration`)을 넣는다.
     - 인계가 없으면 `claim_work`로 맡는다. 이전 세션이 열린 채 남아 있으면 `end_work_session`으로 정리한 뒤 맡는다.
@@ -145,7 +147,8 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 ## 점검 목록
 
 - [ ] 작업 기록 쓰기는 메인만 했다.
-- [ ] 계획 확정 뒤 작업을 만들고 세션을 열어 작업을 맡았다.
+- [ ] 계획 확정 뒤 작업을 만들고(기준 문서는 `links`에, 선행 관계는 발급한 단계 ID로) 세션을 열어 작업을 맡았다.
+- [ ] 이어 받을 때 `links`의 기준 문서 원문을 읽었다.
 - [ ] 단계 시작·끝을 `STAGE_STARTED`·`STAGE_FINISHED`로 남겼다. `get_work_flow`가 없는 서버면 `SUMMARY` 메모로 대신했다.
 - [ ] Claude Code에서는 흐름 대기열을 켜고, 보내기에 성공한 항목만 지웠고, 그만둘 때 껐다.
 - [ ] 결정이 필요하면 `PAUSED`로 바꾸고 질문을 남겼다.
