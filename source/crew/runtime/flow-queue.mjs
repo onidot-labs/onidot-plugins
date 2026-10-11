@@ -108,14 +108,15 @@ const agents = (records) => records.filter((r) => r.k === 'agent');
 const shellQuote = (v) => `'${String(v).replaceAll("'", `'\\''`)}'`;
 
 // ---- 훅 ----
-function hookContext(raw) {
+function hookContext(raw, name) {
   const data = process.env.CLAUDE_PLUGIN_DATA;
   if (!data || !isAbsolute(data)) return null;
   const input = JSON.parse(raw);
   if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.session_id !== 'string' || !SESSION.test(input.session_id)) return null;
   const p = paths(data, input.session_id);
   // 잠금 밖의 첫 확인. 활성 표시가 없으면 잠금 파일도 만들지 않는다.
-  return activeMarker(p) ? { data, input, p, sid: input.session_id } : null;
+  // session-start는 켜기 전에 알려야 하므로 활성 표시 없이 통과시킨다(디스크를 읽지 않는다).
+  return activeMarker(p) || name === 'session-start' ? { data, input, p, sid: input.session_id } : null;
 }
 const subagent = (input) => {
   const agentId = input.agent_id, role = input.agent_type;
@@ -127,6 +128,15 @@ const subagent = (input) => {
 const eventRecord = (type, who, marker) => ({ k: 'event', id: newId(), type, ...who, workId: marker.workId, sessionId: marker.sessionId, occurredAt: new Date().toISOString() });
 
 const hooks = {
+  // Bash 셸에는 CLAUDE_PLUGIN_ROOT·CLAUDE_PLUGIN_DATA가 없다(훅 명령에서만 치환된다).
+  // 세션 시작 때 절대경로가 든 명령 접두사를 메인에 알려, work-record 스킬이 이것을 그대로 쓰게 한다.
+  'session-start'(ctx) {
+    // 서브에이전트 세션에는 알리지 않는다. 작업 기록 쓰기는 메인만 한다.
+    if (typeof ctx.input.agent_id === 'string' && ctx.input.agent_id) return;
+    const prefix = `node ${shellQuote(SCRIPT)} <명령> --data ${shellQuote(ctx.data)} --claude-session ${shellQuote(ctx.sid)}`;
+    const context = `onidot crew 흐름 명령 접두사(work-record 스킬 3절 8번의 <flow>): ${prefix}\n<명령>은 start|pending|ack|unstage|status|stop 중 하나입니다.`;
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } }));
+  },
   'subagent-start'(ctx) {
     const who = subagent(ctx.input);
     if (!who) return;
@@ -187,7 +197,7 @@ function runHook(name) {
   process.stdin.on('data', (d) => { raw += d; if (raw.length > 1_000_000) done(); });
   process.stdin.on('error', done);
   process.stdin.on('end', () => {
-    try { const ctx = hookContext(raw); if (ctx) handler(ctx); } catch {}
+    try { const ctx = hookContext(raw, name); if (ctx) handler(ctx); } catch {}
     done();
   });
 }
@@ -195,7 +205,7 @@ function runHook(name) {
 // ---- 메인이 부르는 명령 ----
 function commandContext(values) {
   const data = values.data;
-  if (!data || !isAbsolute(data)) throw new UsageError('--data에 플러그인 데이터 디렉터리의 절대경로를 주세요(스킬 본문의 ${CLAUDE_PLUGIN_DATA}).');
+  if (!data || !isAbsolute(data)) throw new UsageError('--data에 플러그인 데이터 디렉터리의 절대경로를 주세요(세션 시작 때 훅이 알려 준 접두사의 --data 값).');
   // 스킬 치환이 안 된 환경에서는 빈 값이 오므로 Bash의 CLAUDE_CODE_SESSION_ID로 넘어간다.
   const sid = values['claude-session'] || process.env.CLAUDE_CODE_SESSION_ID;
   if (!sid || !SESSION.test(sid)) throw new UsageError('Claude 세션 ID를 알 수 없습니다. Claude Code의 Bash에서 실행하거나 --claude-session을 주세요.');
@@ -336,7 +346,7 @@ function runCommand(argv) {
       data: { type: 'string' }, 'claude-session': { type: 'string' }, work: { type: 'string' }, session: { type: 'string' },
       'next-seq': { type: 'string' }, stage: { type: 'string' }, discard: { type: 'boolean' } } });
     const [name, ...rest] = positionals;
-    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | hook <subagent-start|subagent-stop|post-agent>');
+    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | hook <session-start|subagent-start|subagent-stop|post-agent>');
     const ctx = commandContext(values);
     // 이 세션의 잠금 파일을 만들 디렉터리. status는 읽기만 하므로 만들지 않는다.
     if (name !== 'status') mkdirSync(ctx.p.dir, { recursive: true, mode: 0o700 });

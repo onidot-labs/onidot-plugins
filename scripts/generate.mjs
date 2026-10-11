@@ -148,6 +148,8 @@ for (const product of catalog.products) {
   if (profile.flowHooks) {
     // A missing node must not surface as a hook error on every subagent; the script itself always exits 0.
     const flow = event => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true` }];
+    // Bash has no plugin variables, so SessionStart announces the absolute-path command prefix to the main thread.
+    claudeHooks.SessionStart = [{ matcher: 'startup|resume|clear|compact', hooks: flow('session-start') }];
     claudeHooks.SubagentStart = [{ hooks: flow('subagent-start') }];
     claudeHooks.SubagentStop = [{ hooks: flow('subagent-stop') }];
     // Agent was named Task before Claude Code 2.1.63.

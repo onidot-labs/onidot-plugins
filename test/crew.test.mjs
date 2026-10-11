@@ -129,6 +129,8 @@ test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionSt
   assert.deepEqual(await readdir(new URL(`${BASE}claude/`, root)), ['hooks.json']);
   const flow = (event) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true` }];
   assert.deepEqual(await json(`${BASE}claude/hooks.json`), { hooks: {
+    // Bash 셸에는 플러그인 변수가 없으므로 세션 시작 훅이 절대경로 명령 접두사를 알린다.
+    SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: flow('session-start') }],
     SubagentStart: [{ hooks: flow('subagent-start') }],
     SubagentStop: [{ hooks: flow('subagent-stop') }],
     // 실제 Claude Code 2.1.284에서 서브에이전트 도구의 tool_name은 Agent다. 2.1.63 전 이름은 Task다.
@@ -296,7 +298,19 @@ test('work-record 스킬은 증거 기록·gate 독립 검토·완료 절차를 
     'append_work_evidence', 'GIT_COMMIT', 'record_work_verification', 'reviewBundles', 'hiddenEvidence',
     'evidenceSetHash', 'parentSessionId', ':gate', 'verifierSessionId', 'complete_work_stage', 'COMPLETED',
     'CONFIRMED', 'CHANGES_REQUIRED', 'HUMAN_REQUIRED', 'HEAVY', 'onidot-crew:gate', 'end_work_session',
+    'MANUAL_CHECK', 'fileSetHash', '참고 자료', 'kind', 'WIKI_PUBLISH', 'MERGE', 'DEPLOY',
   ]) assert.ok(text.includes(needle), `work-record에 ${needle} 없음`);
+  // 증거는 참고 자료이고 커밋이 없다고 완료를 막지 않으며, 실패한 실행도 사실대로 올릴 수 있다.
+  assert.ok(text.includes('커밋이 없다고 완료를 막지 않'));
+  assert.equal(text.includes('실패한 시험은 증거로 올리지 않는다'), false);
+  assert.ok(/실패한 실행[^\n]*(올릴 수|통과로 세지)/.test(text));
+  assert.ok(/verificationMethod[^\n]*MANUAL_CHECK/.test(text));
+  // 플러그인 변수는 Bash 셸에 없다. 세션 시작 훅이 알려 준 접두사를 쓴다.
+  assert.equal(text.includes('${CLAUDE_PLUGIN_ROOT}'), false);
+  assert.equal(text.includes('${CLAUDE_PLUGIN_DATA}'), false);
+  assert.equal(text.includes('${CLAUDE_SESSION_ID}'), false);
+  assert.ok(text.includes('세션 시작 때 훅이 알려 준 명령 접두사'));
+  assert.ok(text.includes('알림이 없으면'));
   // claim 뒤에는 세션 version이 올라가므로 bind 전에 get_work_session을 다시 읽는다.
   const claim = text.indexOf('`claim_work`로 작업 전체를 맡는다');
   const bind = text.indexOf('`bind_work_session`');

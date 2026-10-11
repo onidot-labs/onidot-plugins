@@ -24,8 +24,8 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
    - `expectedVersion`: 0
    - `title`, `goal`: 계획의 제목과 목표
    - `grade`: 보통 `LIGHT`. 되돌리기 어렵거나 중요한 일은 `HEAVY`
-   - `acceptanceCriteria`: 1개 이상. `{ "text": "<완료 기준>", "verificationMethod": "<TEST | COMMIT | WIKI_PUBLISH 중 맞는 것>" }`
-   - `completionConditions`: 1개 이상. `{ "kind": "done", "target": { "action": "<무엇을 끝내나>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }`. 대상 해시 없이 action만 둔 조건은 요구 증거가 `VERIFICATION`이어야 독립 검토(범위 검토)로 충족된다. `approvalRequired`가 true이면 해시 없이는 충족할 수 없으므로 항상 false로 둔다. 증거 종류는 위 `acceptanceCriteria`의 `verificationMethod`가 정한다.
+   - `acceptanceCriteria`: 1개 이상. `{ "text": "<완료 기준>", "verificationMethod": "<TEST | COMMAND | COMMIT | MANUAL_CHECK | WIKI_PUBLISH 중 일의 성격에 맞는 것>" }`. git이 없는 일이나 문서·설정·조사 같은 일은 `MANUAL_CHECK`를 쓴다
+   - `completionConditions`: 1개 이상. `{ "kind": "done", "target": { "action": "<무엇을 끝내나>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }`. 대상 해시 없이 action만 둔 조건은 요구 증거가 `VERIFICATION`이어야 독립 검토(범위 검토)로 충족된다. `approvalRequired`가 true이면 해시 없이는 충족할 수 없으므로 항상 false로 둔다. 어떤 종류의 증거든 그 범위의 묶음이 되며 완료는 독립 검토 판정이 정한다. 증거 종류를 고르는 법은 7절 20번이다.
    - `stages`: 계획의 단계마다 `{ "title": "<단계>", "required": true, "acceptanceCriteria": [], "completionConditions": [{ "kind": "done", "target": { "action": "<단계>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }] }`
    - 단계 의존을 남기려면 단계마다 `id`를 직접 주고 `predecessorStageIds`로 잇는다. id는 13자 소문자 TSID여야 한다. 의존이 없으면 `id`를 비운다.
 2. 응답의 `entityId`(작업 ID)와 `version`을 기억한다. 만든 직후 상태는 `PAUSED`·`QUESTION`이다.
@@ -56,7 +56,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
    - `occurredAt`은 짐작하지 말고 `date -u +%Y-%m-%dT%H:%M:%SZ`로 읽은 실제 시각을 쓴다. 단계 상태는 이 시각 순으로 계산되므로 늦게 보내더라도 실제 일어난 시각을 담는다. 서버 시각보다 5초 넘게 앞서거나 작업 기록 세션을 연 시각보다 이르면 시계 어긋남(`clockSkew`)으로 표시되고 흐름 계산에서 빠진다. 그보다 오래된 시각을 따로 거부하지는 않는다.
    - 흐름 이벤트를 받는 서버인지는 연결된 도구 목록에 `get_work_flow`가 있는지로 판단한다. 없으면 예전처럼 `SUMMARY` 메모로 대신한다. payload에는 `workId`와 `summary`("<단계> 시작, 담당 <역할>" 또는 "<단계> 끝남, <증거 한 줄>")만 넣고, 8번의 서브에이전트 이벤트는 남기지 않는다. `get_work_flow`가 있는데 `VALIDATION_FAILED`가 나면 종류 탓으로 단정하지 말고 위 공통 규칙의 금지 문자열·길이·필수 필드를 먼저 고친다.
 8. 서브에이전트 시작·끝은 메인이 짐작해 쓰지 않는다. Claude Code에서는 플러그인 훅이 정확한 시각·서브에이전트 ID·역할을 Claude 세션별 대기열 파일에 적고, 메인이 그것을 보낸다. Codex에는 이 훅이 없으므로 서브에이전트 이벤트를 남기지 않는다.
-   - 아래에서 `<flow> <명령>`은 Bash로 실행하는 `node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" <명령> --data "${CLAUDE_PLUGIN_DATA}" --claude-session "${CLAUDE_SESSION_ID}"`이다.
+   - 아래에서 `<flow> <명령>`은 Bash로 실행하는 명령이다. Bash 셸에는 플러그인 경로 변수가 없으므로 세션 시작 때 훅이 알려 준 명령 접두사(`node '<절대경로>/flow-queue.mjs' <명령> --data '<절대경로>' --claude-session '<세션 ID>'`)의 `<명령>` 자리에 명령을 넣어 쓴다. 알림이 없으면(훅 미지원) 서브에이전트 이벤트를 남기지 않는다. 이때 이 절의 나머지(켜기·꺼내기 등)는 하지 않는다.
    - 켜기: 2의 6번을 마친 뒤 `<flow> start --work <작업 ID> --session <세션 ID>`를 실행한다. 켠 뒤에 시작한 서브에이전트만 적힌다. 켜지 않은 대화에서는 훅이 아무것도 적지 않고 알리지도 않는다. `/clear` 뒤나 새 대화에서 이어 받으면 다시 켠다.
    - 단계를 맡기는 Agent 호출의 `description` 끝에 `[stage:<단계 ID>]`를 붙인다. 훅이 그 서브에이전트의 이벤트에 그 `stageId`를 붙인다. 단계와 무관한 호출(탐색·조사·자문 등)에는 붙이지 않으며, 그 이벤트는 `stageId` 없이 간다.
    - 꺼내기: 훅이 "기록할 흐름 이벤트 N건"을 알리면(알림의 명령을 그대로 써도 된다), 그리고 `STAGE_FINISHED`를 보내기 직전과 백그라운드 서브에이전트의 완료 알림을 받은 뒤에 `<flow> pending --next-seq <다음 producerSeq>`를 실행한다. 백그라운드 서브에이전트는 끝날 때 알림 훅이 돌지 않으므로 이 확인을 빼먹지 않는다. 출력의 `count`가 0이면 보내지 않는다.
@@ -98,13 +98,18 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 20. 단계 증거를 기록한다. 단계 결과가 통과한 뒤, 단계마다 한다.
     - `get_work`로 `version`, `conditionsVersion`, `grade`, 단계의 `id`와 그 단계 완료 조건의 `id`, 작업의 `acceptanceCriteria` `id`, `claims`를 읽는다.
     - `claim_work`로 그 단계를 맡는다. `stageId`, `sessionId`: 메인 세션, `role`: `IMPLEMENTER`, `expectedClaimGeneration`: 처음이면 0, 아니면 `claims`의 `STAGE:<단계 ID>` 항목 `generation`. 응답의 `attemptId`·`claimGeneration`이 이 단계 증거에 쓰는 값이다. 2절 5번의 작업 맡기 값을 쓰면 서버가 `TARGET_MISMATCH`로 거부한다(증거의 `stageId`는 시도의 단계와 같아야 한다). 이미 맡았으면 다시 맡지 않는다.
-    - 단계에서 커밋했으면 `append_work_evidence`를 부른다. `attemptId`·`claimGeneration`은 위 값, `workId`, `expectedVersion`은 최신 작업 version이다.
+    - 증거는 검토자(gate)가 확인할 참고 자료다. 모두 AI의 주장으로 기록되고, 커밋이 없다고 완료를 막지 않는다. 판정은 gate가 증거를 보고 내린다. 단계 증거는 일의 성격에 맞게 하나 이상 올린다.
+      - git 작업: `COMMIT`. `sourceRef`는 `{ "kind": "GIT_COMMIT", "id": "<sha>" }`이다. 푸시는 필요 없고 로컬 커밋 sha여도 된다. 커밋하지 않기로 한 일이면 아래 다른 종류를 쓴다.
+      - 실행 결과(시험·명령·CI): `TEST`·`COMMAND`·`CI`. 아래 시험 예시를 따른다. git이 없으면 `execution.target.fileSetHash`에 바뀐 파일 묶음의 해시를 넣는다. 예: `shasum -a 256 <바뀐 파일들>`의 줄을 정렬한 출력을 다시 `shasum -a 256`한 값.
+      - 문서·설정·조사·외부 시스템 작업: `MANUAL_CHECK`. 확인한 출처를 `sourceRef`로 밝힌다. 예: `{ "kind": "FILE", "id": "<상대 경로>" }`, `{ "kind": "URL", "url": "<주소>" }`. `kind` 없이 `id`·`url`만 쓰면 Wiki 참조로 보고 가려져 판정할 수 없다. Wiki 발행본은 21번의 `WIKI_PUBLISH` 규칙을 따른다.
+      - 병합·배포: `MERGE`·`DEPLOY`.
+    - 커밋했으면 `append_work_evidence`를 부른다. `attemptId`·`claimGeneration`은 위 값, `workId`, `expectedVersion`은 최신 작업 version이다.
       `evidence`: `{ "criterionId": "<그 단계 완료 조건의 id>", "conditionsVersion": <get_work의 conditionsVersion>, "stageId": "<단계 ID>", "kind": "COMMIT", "sourceRef": { "kind": "GIT_COMMIT", "id": "<전체 40자 sha>" }, "occurredAt": "<실제 UTC 시각>" }`
-    - 시험을 돌렸으면 증거를 하나 더 올린다. `kind`는 `TEST`이고 `sourceRef`는 넣지 않는다(종류 없이 id나 URL만 있는 출처는 서버가 숨은 출처로 보아 검토할 수 없다).
+    - 시험을 돌렸으면 증거를 하나 더 올린다. `kind`는 `TEST`(명령 실행이면 `COMMAND`)이고 `sourceRef`는 넣지 않는다(종류 없이 id나 URL만 있는 출처는 서버가 숨은 출처로 보아 검토할 수 없다).
       `execution`: `{ "target": { "action": "<조건의 action>", "sha": "<시험한 커밋 sha>", "conditionsVersion": <같은 값> }, "runId": "<시험 실행을 가리키는 비지 않은 값, 예: crew:<작업>:<단계>:test:<번호>>", "redactedCommand": "<실행한 명령>", "exitCode": <종료 코드>, "executedCount": <실행 수>, "failedCount": <실패 수> }`
-      종료 코드·실행 수·실패 수는 로그의 결과 줄에서 읽은 값만 쓴다. 서버는 `exitCode` 0, `executedCount` 1 이상, `failedCount` 0, `runId` 있음, `target`의 `sha`나 `fileSetHash` 있음일 때만 통과한 시험으로 센다. 실패한 시험은 증거로 올리지 않는다.
+      종료 코드·실행 수·실패 수는 로그의 결과 줄에서 읽은 값만 쓴다. 서버는 `exitCode` 0, `executedCount` 1 이상, `failedCount` 0, `runId` 있음, `target`의 `sha`나 `fileSetHash` 있음일 때만 통과한 실행으로 센다. 실패한 실행도 사실대로 올릴 수 있다(통과로 세지 않을 뿐이며 판정은 gate가 내린다). 알려진 실패를 포함한 전체 검사 결과처럼 판정에 필요하면 그대로 올리고, 통과했다고 쓰지 않는다.
     - `occurredAt`은 `date -u +%Y-%m-%dT%H:%M:%SZ`로 읽은 실제 시각이다. 서버 시각보다 5분 넘게 앞서면 거부된다. 쓰기마다 응답의 `version`을 다음 `expectedVersion`으로 이어 쓴다.
-21. 모든 단계를 닫은 뒤 작업 수준 증거를 기록한다. 작업의 `acceptanceCriteria`마다 20번과 같은 방식으로 올리되 `criterionId`는 그 완료 기준의 `id`, `stageId`는 비우고, `kind`는 그 기준의 `verificationMethod`(`COMMIT` 또는 `TEST`), `attemptId`·`claimGeneration`은 2절 5번의 작업 맡기 값이다. `WIKI_PUBLISH`는 서버가 발행본을 직접 확인하는 출처(`kind`: `WIKI_REVISION`, `revisionId`, `digest`와 같은 `sourceDigest`)가 있어야 한다.
+21. 모든 단계를 닫은 뒤 작업 수준 증거를 기록한다. 작업의 `acceptanceCriteria`마다 20번과 같은 방식으로 올리되 `criterionId`는 그 완료 기준의 `id`, `stageId`는 비우고, `kind`는 그 기준의 `verificationMethod`(`TEST`·`COMMAND`·`COMMIT`·`MANUAL_CHECK` 등, 병합·배포는 `MERGE`·`DEPLOY`)이고 출처는 20번의 일의 성격별 기준과 같다. `attemptId`·`claimGeneration`은 2절 5번의 작업 맡기 값이다. `WIKI_PUBLISH`는 서버가 발행본을 직접 확인하는 출처(`kind`: `WIKI_REVISION`, `revisionId`, `digest`와 같은 `sourceDigest`)가 있어야 한다.
 22. gate 독립 검토를 받는다. 작업 등급이 `LIGHT`일 때만 한다(`HEAVY`는 26번).
     - 메인이 `onidot-crew:gate`에게 단계 결과와 증거를 감사시킨다. gate는 MCP 도구가 없고 읽기 전용이므로 완료 기준, 증거 ID, 커밋 해시, 시험 로그 위치를 위임 지시에 담아 준다.
     - gate 반환을 받으면 검토 세션을 연다. 작업마다 한 번만 열고 재사용한다. `start_work_session`: `expectedVersion` 0, `externalSessionKey`: 메인 세션 키에 `:gate`를 붙인 값, `harness`·`collectionScope`·`binding`은 메인 세션과 같게, `parentSessionId`: 메인 세션 ID. 검토 세션으로는 `claim_work`로 담당을 잡거나 증거를 기록하거나 완료하지 않고 작업에 묶지도 않는다. 구현 시도나 증거가 생기면 그 세션의 판정은 `TARGET_MISMATCH`로 거부된다.

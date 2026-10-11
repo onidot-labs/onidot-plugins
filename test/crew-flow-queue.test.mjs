@@ -428,3 +428,27 @@ test('unstage는 빠진 단계의 ID만 떼고, 내용이 바뀌면 멱등 키�
     assert.equal('stageId' in pending(f.data, 1).events[1].payload, false);
   } finally { await f.cleanup(); }
 });
+
+test('SessionStart 훅은 절대경로가 든 명령 접두사를 메인에만 알린다', async () => {
+  const f = await fixture();
+  try {
+    const r = hook(f.data, 'session-start', { session_id: SID, hook_event_name: 'SessionStart', source: 'startup' });
+    assert.equal(r.status, 0);
+    const output = JSON.parse(r.stdout);
+    assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
+    const context = output.hookSpecificOutput.additionalContext;
+    assert.ok(context.includes(`node '${script}' <명령> --data '${f.data}' --claude-session '${SID}'`), context);
+    assert.ok(Buffer.byteLength(r.stdout) <= 1000, `${Buffer.byteLength(r.stdout)} bytes`);
+    // 알리기만 하고 디스크는 건드리지 않는다.
+    assert.equal(await files(f.data), null);
+    // 서브에이전트, 잘못된 세션 ID, 상대 경로 데이터, 데이터 없음에는 아무것도 내지 않는다.
+    assert.equal(hook(f.data, 'session-start', { session_id: SID, agent_id: 'a1', agent_type: 'onidot-crew:worker' }).stdout, '');
+    assert.equal(hook(f.data, 'session-start', { session_id: '../x' }).stdout, '');
+    assert.equal(hook('relative/dir', 'session-start', { session_id: SID }).stdout, '');
+    assert.equal(hook(null, 'session-start', { session_id: SID }).stdout, '');
+    assert.equal(hook(f.data, 'session-start', 'not json').status, 0);
+    // 알린 접두사로 status가 실제로 돈다.
+    const status = spawnSync(process.execPath, [script, 'status', '--data', f.data, '--claude-session', SID], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+    assert.equal(status.status, 0, status.stderr);
+  } finally { await f.cleanup(); }
+});
