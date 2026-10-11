@@ -124,7 +124,7 @@ test('리더 에이전트는 모델·도구를 상속하고 settings.json이 메
   assert.equal((await readdir(new URL(`${BASE}codex/agents/`, root))).length, 17);
 });
 
-test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionStart 훅 하나만 둔다', async () => {
+test('crew의 Claude 훅은 흐름 대기열 훅뿐이고 Codex는 SessionStart 훅 하나만 둔다', async () => {
   // 리더 에이전트가 세션 안내를 맡으므로 Claude에는 SessionStart가 없다.
   assert.deepEqual(await readdir(new URL(`${BASE}claude/`, root)), ['hooks.json']);
   const flow = (event) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true` }];
@@ -134,7 +134,11 @@ test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionSt
     SubagentStart: [{ hooks: flow('subagent-start') }],
     SubagentStop: [{ hooks: flow('subagent-stop') }],
     // 실제 Claude Code 2.1.284에서 서브에이전트 도구의 tool_name은 Agent다. 2.1.63 전 이름은 Task다.
-    PostToolUse: [{ matcher: 'Agent|Task', hooks: flow('post-agent') }] } });
+    // SendMessage로 재개한 서브에이전트의 이벤트도 알린다.
+    PostToolUse: [{ matcher: 'Agent|Task|SendMessage', hooks: flow('post-agent') }],
+    // 메인이 잊고 끝내거나 다음 입력을 받을 때 보내지 않은 이벤트를 다시 알린다.
+    Stop: [{ hooks: flow('stop') }],
+    UserPromptSubmit: [{ hooks: flow('user-prompt') }] } });
   assert.equal(await read(`${BASE}scripts/flow-queue.mjs`), await read('source/crew/runtime/flow-queue.mjs'));
   const codex = (await json(`${BASE}codex/hooks.json`)).hooks;
   assert.deepEqual(Object.keys(codex), ['SessionStart']);

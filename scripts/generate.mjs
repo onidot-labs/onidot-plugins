@@ -153,7 +153,11 @@ for (const product of catalog.products) {
     claudeHooks.SubagentStart = [{ hooks: flow('subagent-start') }];
     claudeHooks.SubagentStop = [{ hooks: flow('subagent-stop') }];
     // Agent was named Task before Claude Code 2.1.63.
-    claudeHooks.PostToolUse = [{ matcher: 'Agent|Task', hooks: flow('post-agent') }];
+    // SendMessage resumes a subagent, whose later completion would otherwise go unannounced.
+    claudeHooks.PostToolUse = [{ matcher: 'Agent|Task|SendMessage', hooks: flow('post-agent') }];
+    // A background subagent finishing is a notification, not a tool call: block the main turn's Stop once and re-announce on the next prompt.
+    claudeHooks.Stop = [{ hooks: flow('stop') }];
+    claudeHooks.UserPromptSubmit = [{ hooks: flow('user-prompt') }];
   }
   if (Object.keys(claudeHooks).length) outputs.set(`${base}/claude/hooks.json`, json({ hooks: claudeHooks }));
   // Claude account connector owns MCP. A root .mcp.json would silently attach a second server in Code.

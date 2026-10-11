@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // onidot crew 작업 흐름 대기열(Claude Code 전용).
 // SubagentStart·SubagentStop 훅이 서브에이전트 시작·끝을 Claude 세션별 대기열에 한 줄씩 적고,
-// 메인의 Agent 호출이 끝나면(PostToolUse) 보낼 항목이 있다고 메인에 알린다.
+// 메인의 Agent·SendMessage 호출이 끝나면(PostToolUse), 턴을 끝내려 할 때(Stop, 한 번 차단), 다음 입력 때(UserPromptSubmit) 보낼 항목이 있다고 메인에 알린다.
 // Studio로 보내는 일은 메인이 work-record 스킬대로 MCP로 한다. 이 스크립트는 네트워크를 쓰지 않는다.
 // 대기열에는 식별자·역할·단계 ID·시각만 적는다. 프롬프트·결과 본문·전사 경로는 적지 않는다.
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
@@ -147,6 +147,22 @@ const subagent = (input) => {
 };
 const eventRecord = (type, who, marker) => ({ k: 'event', id: newId(), type, ...who, workId: marker.workId, sessionId: marker.sessionId, occurredAt: new Date().toISOString() });
 
+const isSubagentInput = (input) => typeof input.agent_id === 'string' && input.agent_id !== '';
+// 세 훅(post-agent·stop·user-prompt)이 함께 쓰는 알림 문구.
+const pendingNotice = (ctx, marker, count) => {
+  const command = `node ${shellQuote(SCRIPT)}`, args = `--data ${shellQuote(ctx.data)} --claude-session ${shellQuote(ctx.sid)}`;
+  return [`onidot crew: 기록할 흐름 이벤트 ${count}건이 대기열에 있습니다(작업 ${marker.workId}). onidot-crew:work-record 스킬의 3절 8번대로 append_work_session_events로 보내고, 성공하면 지우세요.`,
+    `꺼내기: ${command} pending ${args} --next-seq <다음 producerSeq>`,
+    `보낸 뒤 지우기: ${command} ack ${args} <꺼내기 출력의 ids>`].join('\n');
+};
+// 지금 켜진 작업·세션의 보내지 않은 항목 수. pending이 내는 항목과 같은 기준이다.
+const unsentCount = (ctx) => withLock(ctx.p, () => {
+  const marker = activeMarker(ctx.p);
+  if (!marker) return null;
+  const count = events(readRecords(ctx.p)).filter((r) => r.workId === marker.workId && r.sessionId === marker.sessionId).length;
+  return count ? { marker, count } : null;
+});
+
 const hooks = {
   // Bash 셸에는 CLAUDE_PLUGIN_ROOT·CLAUDE_PLUGIN_DATA가 없다(훅 명령에서만 치환된다).
   // 세션 시작 때 절대경로가 든 명령 접두사를 메인에 알려, work-record 스킬이 이것을 그대로 쓰게 한다.
@@ -184,7 +200,8 @@ const hooks = {
   'post-agent'(ctx) {
     const { input, p } = ctx;
     // Agent는 2.1.63 전 이름이 Task였다.
-    if (input.tool_name !== 'Agent' && !(input.tool_name === 'Task' && typeof input.tool_input?.subagent_type === 'string')) return;
+    // SendMessage로 재개한 서브에이전트가 끝날 때도 같은 알림을 낸다(응답에 agentId·단계 표식이 없으면 연결은 만들지 않는다).
+    if (input.tool_name !== 'Agent' && input.tool_name !== 'SendMessage' && !(input.tool_name === 'Task' && typeof input.tool_input?.subagent_type === 'string')) return;
     const response = input.tool_response, description = input.tool_input?.description;
     const agentId = response && typeof response === 'object' ? response.agentId : undefined;
     const tag = typeof description === 'string' ? description.match(STAGE_TAG) : null;
@@ -199,11 +216,21 @@ const hooks = {
     });
     // 서브에이전트 안의 Agent 호출에는 알리지 않는다. 작업 기록 쓰기는 메인만 한다.
     if (!state || typeof input.agent_id === 'string' && input.agent_id || !state.count) return;
-    const command = `node ${shellQuote(SCRIPT)}`, args = `--data ${shellQuote(ctx.data)} --claude-session ${shellQuote(ctx.sid)}`;
-    const context = [`onidot crew: 기록할 흐름 이벤트 ${state.count}건이 대기열에 있습니다(작업 ${state.marker.workId}). onidot-crew:work-record 스킬의 3절 8번대로 append_work_session_events로 보내고, 성공하면 지우세요.`,
-      `꺼내기: ${command} pending ${args} --next-seq <다음 producerSeq>`,
-      `보낸 뒤 지우기: ${command} ack ${args} <꺼내기 출력의 ids>`].join('\n');
-    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: context } }));
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: pendingNotice(ctx, state.marker, state.count) } }));
+  },
+  // 메인이 알림을 놓치고 턴을 끝내려 할 때 한 번만 막아 보내게 한다. stop_hook_active이면 이미 한 번 막은 뒤이므로 통과한다.
+  stop(ctx) {
+    if (ctx.input.stop_hook_active === true || isSubagentInput(ctx.input)) return;
+    const found = unsentCount(ctx);
+    if (!found) return;
+    process.stdout.write(JSON.stringify({ decision: 'block', reason: pendingNotice(ctx, found.marker, found.count) }));
+  },
+  // 사용자가 다음 입력을 낼 때 남은 항목을 알린다. 차단하지 않는다.
+  'user-prompt'(ctx) {
+    if (isSubagentInput(ctx.input)) return;
+    const found = unsentCount(ctx);
+    if (!found) return;
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: pendingNotice(ctx, found.marker, found.count) } }));
   },
 };
 
@@ -376,7 +403,7 @@ function runCommand(argv) {
       out({ ids: newTsids(Number(raw)) });
       return;
     }
-    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | ids | hook <session-start|subagent-start|subagent-stop|post-agent>');
+    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | ids | hook <session-start|subagent-start|subagent-stop|post-agent|stop|user-prompt>');
     const ctx = commandContext(values);
     // 이 세션의 잠금 파일을 만들 디렉터리. status는 읽기만 하므로 만들지 않는다.
     if (name !== 'status') mkdirSync(ctx.p.dir, { recursive: true, mode: 0o700 });
