@@ -12,7 +12,7 @@ const ids = new Set(), names = new Set();
 // Product-specific outputs. Wiki keeps its OAuth helper, recording check and server resources.
 const profiles = {
   wiki: { skills: 'source/skills', sessionStart: 'source/runtime/claude-session-start.json',
-    scripts: ['oauth-helper.mjs', 'recording-check.sh', 'catalog-check.mjs'], recordingCheck: true, serverResources: true },
+    scripts: ['oauth-helper.mjs', 'oauth-launcher.mjs', 'oauth-helper-install.mjs', 'recording-check.sh', 'catalog-check.mjs'], recordingCheck: true, serverResources: true },
   crew: { skills: 'source/crew/skills', sessionStart: 'source/crew/runtime/session-start.json',
     scripts: ['codex-agents.mjs', 'flow-queue.mjs'], scriptsDir: 'source/crew/runtime', recordingCheck: false, serverResources: false, agents: 'source/crew/agents',
     agentsCommon: 'source/crew/agents-common.md', main: 'source/crew/main',
