@@ -29,13 +29,13 @@ const splitAgent = (markdown) => {
 test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·완료 기록 검사를 두지 않는다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.name, 'onidot-crew');
-  assert.equal(source.version, '0.4.0');
+  assert.equal(source.version, '0.5.0');
   assert.equal(source.displayName, 'onidot crew');
   const claude = await json(`${BASE}.claude-plugin/plugin.json`);
   const codex = await json(`${BASE}.codex-plugin/plugin.json`);
   for (const manifest of [claude, codex]) {
     assert.equal(manifest.name, 'onidot-crew');
-    assert.equal(manifest.version, '0.4.0');
+    assert.equal(manifest.version, '0.5.0');
     assert.equal(manifest.skills, './skills/');
   }
   assert.equal(claude.hooks, './claude/hooks.json');
@@ -144,7 +144,7 @@ test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionSt
   assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/codex/session-start.json"');
   const context = await json(`${BASE}codex/session-start.json`);
   assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.4.0'));
+  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.5.0'));
   assert.ok(!context.hookSpecificOutput.additionalContext.includes('{{version}}'));
 });
 
@@ -154,9 +154,9 @@ test('두 marketplace와 catalog는 onidot과 onidot-crew를 함께 싣는다', 
   assert.deepEqual(codex.plugins.find((p) => p.name === 'onidot-crew').source, { source: 'local', path: './plugins/onidot-crew' });
   const entry = claude.plugins.find((p) => p.name === 'onidot-crew');
   assert.equal(entry.source, './plugins/onidot-crew');
-  assert.equal(entry.version, '0.4.0');
+  assert.equal(entry.version, '0.5.0');
   assert.deepEqual((await json('catalog.json')).products.find((p) => p.id === 'crew'),
-    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.4.0' });
+    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.5.0' });
 });
 
 // 원본 복사본에서 생성기를 돌려 잘못된 crew 정의를 생성 전에 거부하는지 본다.
@@ -403,4 +403,18 @@ test('위임 전 기준 확인·원문 전달·결과 대조 규칙이 리더·�
   for (const id of ['designer', 'planner']) has(await agent(id), '### 따른 기준', id);
   const context = await json(`${BASE}codex/session-start.json`);
   has(context.hookSpecificOutput.additionalContext, 'onidot-crew:spec-first', 'session-start');
+});
+
+test('crew 증거 라벨·커밋 주소·단계 담당 모델·계획 선행 규칙이 원본과 생성물에 들어 있다', async () => {
+  for (const base of ['source/crew/skills', 'plugins/onidot-crew/skills']) {
+    const wr = await read(`${base}/work-record/SKILL.md`);
+    assert.ok(/`sourceRef`에 `label`을 넣는다[^\n]*커밋 제목[^\n]*200자 이하 한 줄/.test(wr), `${base} label 규칙`);
+    assert.ok(/`COMMIT` 증거는 `sourceRef\.url`에 https 커밋 주소[^\n]*git@github\.com:owner\/repo\.git[^\n]*사용자 정보와 토큰[^\n]*제거[^\n]*원격이 없으면 `url`을 비운다/.test(wr), `${base} 커밋 URL 규칙`);
+    assert.ok(wr.includes('https://<호스트>/<owner>/<repo>/commit/<sha>'), `${base} 커밋 주소 꼴`);
+    assert.ok(wr.includes('{ "label": "<로그 수치 요약>" }'), `${base} TEST label-only`);
+    assert.ok(/시작 이벤트를 남긴 직후 `claim_work`[^\n]*`model`[^\n]*120바이트[^\n]*`CLAIM_LOST`/.test(wr), `${base} 단계 담당 model`);
+    assert.ok(/제목 `계획`[^\n]*`predecessorStageIds`/.test(wr), `${base} 계획 선행`);
+    const plan = await read(`${base}/plan/SKILL.md`);
+    assert.ok(/첫 단계는 `계획`[^\n]*ids --count N[^\n]*predecessorStageIds/.test(plan), `${base} plan 계획 선행`);
+  }
 });

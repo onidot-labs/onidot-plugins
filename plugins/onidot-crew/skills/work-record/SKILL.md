@@ -29,6 +29,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
    - `stages`: 계획의 단계마다 `{ "title": "<단계>", "required": true, "acceptanceCriteria": [], "completionConditions": [{ "kind": "done", "target": { "action": "<단계>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }] }`
    - `links`: 계획의 기준 묶음(`onidot-crew:spec-first` 2절)의 기준 문서와 기존 조사를 넣는다. 항목마다 `{ "kind": "URL", "url": "<문서 주소>" }`로 쓴다. Wiki 페이지도 페이지 주소를 `URL`로 넣는다(`WIKI_PAGE` 종류는 읽기 권한 검사에서 기록한 사람에게도 가려질 수 있다). 기준을 찾아봤는데 없었으면 비워 두고 계획서에 찾아본 곳을 적는다.
    - 계획의 선행 관계를 그대로 남긴다. 작업 화면의 흐름 그래프는 이 의존으로 묶음 열과 간선을 그리므로, 의존이 있는 계획을 의존 없이 올리지 않는다. 단계마다 `id`를 주고 `predecessorStageIds`로 잇는다. id는 서버 형식의 13자 TSID여야 하므로 직접 지어내지 않고 발급받는다. Claude Code에서 8번의 명령 접두사가 있으면 `<flow> ids --count <단계 수>`를 쓴다. 접두사가 없거나 Codex면 아래 한 줄을 Bash로 실행한다(끝의 숫자가 단계 수, 출력은 공백으로 나눈 ID). 작업을 만들 때마다 새로 발급하고, 응답을 못 받아 다시 보낼 때는 같은 ID와 같은 `idempotencyKey`로 보낸다. 발급할 수 없으면 `id`를 비우고 의존을 계획서에 적은 뒤 그 사실을 보고한다.
+   - 첫 단계는 제목 `계획`(기준 찾기·탐색·계획 작성·검증을 한 단계로 묶은 것)으로 두고, 나머지 모든 단계가 그 단계의 `id`를 `predecessorStageIds`에 포함한다(계획에서 서로 정한 선행은 그대로 함께 둔다). 흐름 그래프가 계획 단계에서 갈라져 나가는 모양이 된다. id는 위 `ids --count`로 `계획`까지 센 개수만큼 한 번에 발급한다.
      ```bash
      node -e 'const A="0123456789abcdefghjkmnpqrstvwxyz",n=+process.argv[1],b=(BigInt(Date.now())-1577836800000n)<<22n,r=BigInt(Math.floor(Math.random()*4194304)),o=[];for(let i=0;i<n;i++){let u=b+r+BigInt(i),s="";for(let k=60;k>=0;k-=5)s+=A[Number((u>>BigInt(k))&31n)];o.push(s)}console.log(o.join(" "))' 5
      ```
@@ -55,6 +56,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 7. 단계를 맡기기 직전과 끝난 직후에 `append_work_session_events`로 단계 흐름 이벤트를 남긴다. `expectedVersion`은 0이다. 흐름 이벤트는 작업 버전을 올리지 않는다.
    - 시작: `{ "schemaVersion": 1, "eventId": "crew:<작업>:<단계>:started:<번호>", "sessionId": "<세션 ID>", "producerSeq": <다음 순번>, "occurredAt": "<실제 UTC 시각>", "type": "STAGE_STARTED", "payload": { "workId": "<작업 ID>", "stageId": "<단계 ID>", "role": "<맡긴 역할의 한정 이름, 예: onidot-crew:worker>", "summary": "<지금 하는 일 한 줄>" } }`
    - 끝: `type`은 `STAGE_FINISHED`, `eventId` 끝은 `finished:<번호>`로 하고 payload에 `result`를 넣는다. 통과하면 `DONE`, 실패하면 `FAILED`, 사용자 결정이나 외부 요인으로 막히면 `BLOCKED`다. `summary`에는 증거 한 줄을 쓴다.
+   - 시작 이벤트를 남긴 직후 `claim_work`로 그 단계 담당을 잡는다. `stageId`를 주고 `role`은 기존 값(`IMPLEMENTER` 등, 20번)을 쓴다. `model`에는 위임한 역할이 실제로 실행되는 모델 이름을 넣는다. 모르면 비우고 짐작해 쓰지 않는다. `model`은 UTF-8 120바이트 이하 한 줄이다. 단계 담당은 단계 활동으로 갱신되지 않아 오래 걸리면 만료될 수 있다. 만료돼 `CLAIM_LOST`가 나면 오류표의 `CLAIM_LOST` 절차로 다시 맡는다.
    - `stageId`는 `get_work`나 `get_work_flow`가 돌려준 단계의 `id`다. 메인이 직접 하는 단계는 `role`을 비운다. `role`은 UTF-8 120바이트, `summary`는 1000바이트 이하 한 줄이다.
    - `producerSeq`는 세션마다 0부터 시작해 이벤트마다 1씩 올린다. 아래 8번의 꺼내기 출력 `nextSeq`도 같은 순번을 이어 쓴다. 건너뛰면 서버가 순번 빈틈으로 표시한다.
    - `occurredAt`은 짐작하지 말고 `date -u +%Y-%m-%dT%H:%M:%SZ`로 읽은 실제 시각을 쓴다. 단계 상태는 이 시각 순으로 계산되므로 늦게 보내더라도 실제 일어난 시각을 담는다. 서버 시각보다 5초 넘게 앞서거나 작업 기록 세션을 연 시각보다 이르면 시계 어긋남(`clockSkew`)으로 표시되고 흐름 계산에서 빠진다. 그보다 오래된 시각을 따로 거부하지는 않는다.
@@ -105,15 +107,18 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 
 20. 단계 증거를 기록한다. 단계 결과가 통과한 뒤, 단계마다 한다.
     - `get_work`로 `version`, `conditionsVersion`, `grade`, 단계의 `id`와 그 단계 완료 조건의 `id`, 작업의 `acceptanceCriteria` `id`, `claims`를 읽는다.
-    - `claim_work`로 그 단계를 맡는다. `stageId`, `sessionId`: 메인 세션, `role`: `IMPLEMENTER`, `expectedClaimGeneration`: 처음이면 0, 아니면 `claims`의 `STAGE:<단계 ID>` 항목 `generation`. 응답의 `attemptId`·`claimGeneration`이 이 단계 증거에 쓰는 값이다. 2절 5번의 작업 맡기 값을 쓰면 서버가 `TARGET_MISMATCH`로 거부한다(증거의 `stageId`는 시도의 단계와 같아야 한다). 이미 맡았으면 다시 맡지 않는다.
+    - 단계 담당은 3절 7번에서 시작 이벤트 직후 이미 잡았다. 아직 안 잡았다면 지금 `claim_work`로 맡는다(`model` 규칙은 3절 7번). `stageId`, `sessionId`: 메인 세션, `role`: `IMPLEMENTER`, `expectedClaimGeneration`: 처음이면 0, 아니면 `claims`의 `STAGE:<단계 ID>` 항목 `generation`. 응답의 `attemptId`·`claimGeneration`이 이 단계 증거에 쓰는 값이다. 2절 5번의 작업 맡기 값을 쓰면 서버가 `TARGET_MISMATCH`로 거부한다(증거의 `stageId`는 시도의 단계와 같아야 한다). 이미 맡았으면 다시 맡지 않는다.
     - 증거는 검토자(gate)가 확인할 참고 자료다. 모두 AI의 주장으로 기록된다. 단계와 범위 검토에서는 커밋이 없다고 완료를 막지 않고 판정은 gate가 증거를 보고 내린다. 작업 수준 완료 기준은 다르다(21번). 단계 증거는 일의 성격에 맞게 하나 이상 올린다.
-      - git 작업: `COMMIT`. `sourceRef`는 `{ "kind": "GIT_COMMIT", "id": "<sha>" }`이다. 푸시는 필요 없고 로컬 커밋 sha여도 된다. 커밋하지 않기로 한 일이면 아래 다른 종류를 쓴다.
+      - git 작업: `COMMIT`. `sourceRef`는 `{ "kind": "GIT_COMMIT", "id": "<sha>", "label": "<커밋 제목>", "url": "<https 커밋 주소>" }`이다. 푸시는 필요 없고 로컬 커밋 sha여도 된다. 커밋하지 않기로 한 일이면 아래 다른 종류를 쓴다.
       - 실행 결과(시험·명령·CI): `TEST`·`COMMAND`·`CI`. 아래 시험 예시를 따른다. git이 없으면 `execution.target.fileSetHash`에 바뀐 파일 묶음의 해시를 넣는다. 예: `shasum -a 256 <바뀐 파일들>`의 줄을 정렬한 출력을 다시 `shasum -a 256`한 값.
       - 문서·설정·조사·외부 시스템 작업: `MANUAL_CHECK`. 확인한 출처를 `sourceRef`로 밝힌다. 예: `{ "kind": "FILE", "id": "<상대 경로>" }`, `{ "kind": "URL", "url": "<주소>" }`. Wiki 발행본은 21번의 `WIKI_PUBLISH` 규칙을 따른다.
       - 병합·배포: `MERGE`·`DEPLOY`.
-    - 증거는 종류와 무관하게 `append_work_evidence`로 올린다. `attemptId`·`claimGeneration`은 위 값, `workId`, `expectedVersion`은 최신 작업 version이다. `evidence`의 공통 필드는 `criterionId`(그 단계 완료 조건의 id), `conditionsVersion`(`get_work`의 값), `stageId`, `kind`, `occurredAt`(실제 UTC 시각)이고 종류에 따라 `sourceRef`나 `execution`이 붙는다. 모든 `sourceRef`에는 `kind`가 필수다. `kind` 없이 `id`·`url`만 있으면 서버가 Wiki 참조로 보고 숨은 출처(`hiddenEvidence`)로 가려 검토할 수 없다. 묶음에 `hiddenEvidence`가 나오면 `invalidate_work_evidence`(`spaceId`, `workId`, `evidenceId`, `reason` 필수, `expectedVersion`, `idempotencyKey`)로 그 증거를 무효화하고 `kind`를 단 증거를 다시 올린다.
-    - 커밋했으면 `kind`는 `COMMIT`, `sourceRef`는 `{ "kind": "GIT_COMMIT", "id": "<전체 40자 sha>" }`로 올린다.
-    - 시험을 돌렸으면 증거를 하나 더 올린다. `kind`는 `TEST`(명령 실행이면 `COMMAND`)이고 `sourceRef`는 넣지 않는다.
+    - 모든 증거의 `sourceRef`에 `label`을 넣는다. 작업 화면이 증거를 한 줄로 보여 주는 값이다. 커밋은 커밋 제목, 시험은 `시험 12건 통과`처럼 로그 수치를 요약한 문장(로그에서 읽은 값만), 확인한 문서는 문서 제목을 쓴다. 200자 이하 한 줄이며 줄바꿈·비밀값을 넣지 않는다.
+    - `COMMIT` 증거는 `sourceRef.url`에 https 커밋 주소를 넣는다. `git remote get-url origin`(또는 push 대상 원격)을 읽어 `https://<호스트>/<owner>/<repo>/commit/<sha>`로 바꾼다. `https://github.com/owner/repo.git`은 끝의 `.git`을 떼고, `git@github.com:owner/repo.git`·`ssh://git@host/owner/repo.git` 같은 ssh 형식도 같은 https 주소로 바꾼다. 원격 URL 안의 사용자 정보와 토큰(`user:token@`)은 반드시 제거한다. 원격이 없으면 `url`을 비운다. 회사·비git 작업의 증거는 참고용이라 이 때문에 막지 않는다.
+    - `TEST`·`COMMAND` 증거의 `sourceRef`는 `{ "label": "<로그 수치 요약>" }`만 넣는다(`kind`·`id`·`url`은 없이).
+    - 증거는 종류와 무관하게 `append_work_evidence`로 올린다. `attemptId`·`claimGeneration`은 위 값, `workId`, `expectedVersion`은 최신 작업 version이다. `evidence`의 공통 필드는 `criterionId`(그 단계 완료 조건의 id), `conditionsVersion`(`get_work`의 값), `stageId`, `kind`, `occurredAt`(실제 UTC 시각)이고 종류에 따라 `sourceRef`나 `execution`이 붙는다. `TEST`·`COMMAND`의 label-only `sourceRef`를 제외한 모든 `sourceRef`에는 `kind`가 필수다. `kind` 없이 `id`·`url`만 있으면 서버가 Wiki 참조로 보고 숨은 출처(`hiddenEvidence`)로 가려 검토할 수 없다. 묶음에 `hiddenEvidence`가 나오면 `invalidate_work_evidence`(`spaceId`, `workId`, `evidenceId`, `reason` 필수, `expectedVersion`, `idempotencyKey`)로 그 증거를 무효화하고 `kind`를 단 증거를 다시 올린다.
+    - 커밋했으면 `kind`는 `COMMIT`, `sourceRef`는 `{ "kind": "GIT_COMMIT", "id": "<전체 40자 sha>", "label": "<커밋 제목>", "url": "<https 커밋 주소>" }`로 올린다.
+    - 시험을 돌렸으면 증거를 하나 더 올린다. `kind`는 `TEST`(명령 실행이면 `COMMAND`)이고 `sourceRef`는 `{ "label": "<시험 n건 통과 같은 수치 요약>" }`만 넣는다.
       `execution`: `{ "target": { "action": "<조건의 action>", "sha": "<시험한 커밋 sha>", "conditionsVersion": <같은 값> }, "runId": "<시험 실행을 가리키는 비지 않은 값, 예: crew:<작업>:<단계>:test:<번호>>", "redactedCommand": "<실행한 명령>", "exitCode": <종료 코드>, "executedCount": <실행 수>, "failedCount": <실패 수> }`
       종료 코드·실행 수·실패 수는 로그의 결과 줄에서 읽은 값만 쓴다. 서버는 `exitCode` 0, `executedCount` 1 이상, `failedCount` 0, `runId` 있음, `target`의 `sha`나 `fileSetHash` 있음일 때만 통과한 실행으로 센다. 실패한 실행도 사실대로 올릴 수 있다(통과로 세지 않을 뿐이며 판정은 gate가 내린다). 알려진 실패를 포함한 전체 검사 결과처럼 판정에 필요하면 그대로 올리고, 통과했다고 쓰지 않는다.
     - `occurredAt`은 `date -u +%Y-%m-%dT%H:%M:%SZ`로 읽은 실제 시각이다. 서버 시각보다 5분 넘게 앞서면 거부된다. 쓰기마다 응답의 `version`을 다음 `expectedVersion`으로 이어 쓴다.
@@ -140,7 +145,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 | `REVISION_CONFLICT` | `get_work`로 최신 `version`을 읽고 다시 보낸다 |
 | 응답을 못 받음 | 같은 인자와 같은 키로 다시 보낸다 |
 | `IDEMPOTENCY_KEY_REUSED` | 새 키를 쓴다. 직접 쓴 이벤트면 `eventId`의 번호도 바꾼다(같은 `eventId`에 다른 내용은 거부된다). 대기열 이벤트는 고치지 않고 다시 꺼낸다 |
-| `CLAIM_LOST` | `get_work`의 `claims`를 본다. 다른 세션의 살아 있는 담당이면 멈추고 보고한다 |
+| `CLAIM_LOST` | `get_work`의 `claims`를 본다. 다른 세션의 살아 있는 담당이면 멈추고 보고한다. 내 담당이 만료됐을 뿐이면(단계 담당은 활동으로 갱신되지 않는다) 그 `targetKey`의 `generation`을 `expectedClaimGeneration`으로 다시 `claim_work`한다 |
 | `TARGET_MISMATCH` | 증거는 `stageId`와 시도의 단계가 같아야 하고, 판정은 묶음 값이 그대로이며 검토 세션이 독립이어야 한다(구현 시도·증거 제출이 없는 세션). 흐름 이벤트의 `stageId`가 그 작업의 단계가 아닌 경우도 같다. 직접 쓴 단계 이벤트면 `get_work`로 단계 `id`를 다시 읽는다. 대기열 이벤트면 8번대로 `unstage`로 단계 ID만 떼고 다시 보낸다 |
 | `COMPLETION_NOT_SATISFIED` | 완료 기준이 아직 충족되지 않았다. 응답의 미충족 기준 ID를 보고하고 완료라고 하지 않는다. 증거가 빠졌거나 판정이 없거나 증거가 늘어 판정이 무효가 된 경우다 |
 | `INVALID_TRANSITION` | `get_work`의 `state`와 `stopReason`을 읽고 판단한다. 사람이 멈춘 작업이거나 같은 상태로 바꾸려 한 것이면 보고한다. `PAUSED`·`INACTIVITY`면 바로 아래 행을 따른다 |
