@@ -354,6 +354,18 @@ test('work-record 스킬은 리뷰 지적(비활성 정리·기계 검사·구 �
   assert.ok(/14\.[\s\S]*?15\.[^\n]*검토 세션/.test(text), '인계 때 검토 세션도 닫기');
 });
 
+test('work-record 스킬은 다건 배열 입력(stages·evidenceItems·verifications·events)과 실패·구 서버 대응을 담는다', async () => {
+  const text = await read('source/crew/skills/work-record/SKILL.md');
+  for (const needle of ['`stages`(1~20건)', '`evidenceItems`(1~50건)', '`verifications`(1~20건)', '`verificationIds`', '`evidenceIds`', '`itemIndex`', '`events` 배열']) {
+    assert.ok(text.includes(needle), `work-record에 ${needle} 없음`);
+  }
+  assert.ok(/전부 반영되거나 하나도 반영되지 않/.test(text));
+  assert.ok(/알 수 없는 필드[^\n]*(stages|evidenceItems)[^\n]*단건 형식으로 한 건씩/.test(text), '구 서버 단건 대체');
+  assert.ok(/itemIndex[^\n]*새 `idempotencyKey`/.test(text), '배열 실패 재전송은 새 키');
+  assert.ok(/같은 단계[^\n]*증거만/.test(text), 'evidenceItems는 같은 단계만');
+  assert.ok(/대기열 이벤트 묶음과는 섞지 않/.test(text));
+});
+
 test('verify 스킬은 증거 기록 → 기록된 묶음 감사 → 판정 기록 → 완료 순서이고 gate 반환 어휘가 판정과 맞는다', async () => {
   const verify = await read('source/crew/skills/verify/SKILL.md');
   const order = verify.split('\n').find((l) => l.startsWith('7. '));
