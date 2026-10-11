@@ -26,19 +26,19 @@ const splitAgent = (markdown) => {
   return { front: markdown.slice(4, end).split('\n'), body: markdown.slice(end + 6) };
 };
 
-test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·스크립트를 두지 않는다', async () => {
+test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·완료 기록 검사를 두지 않는다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.name, 'onidot-crew');
-  assert.equal(source.version, '0.2.0');
+  assert.equal(source.version, '0.3.0');
   assert.equal(source.displayName, 'onidot crew');
   const claude = await json(`${BASE}.claude-plugin/plugin.json`);
   const codex = await json(`${BASE}.codex-plugin/plugin.json`);
   for (const manifest of [claude, codex]) {
     assert.equal(manifest.name, 'onidot-crew');
-    assert.equal(manifest.version, '0.2.0');
+    assert.equal(manifest.version, '0.3.0');
     assert.equal(manifest.skills, './skills/');
   }
-  assert.equal('hooks' in claude, false);
+  assert.equal(claude.hooks, './claude/hooks.json');
   assert.equal('mcpServers' in claude, false);
   assert.deepEqual(codex.mcpServers, {});
   assert.equal(codex.hooks, './codex/hooks.json');
@@ -124,8 +124,18 @@ test('리더 에이전트는 모델·도구를 상속하고 settings.json이 메
   assert.equal((await readdir(new URL(`${BASE}codex/agents/`, root))).length, 17);
 });
 
-test('crew는 Claude 훅 없이 Codex SessionStart 훅 하나만 둔다', async () => {
-  assert.equal(await exists(`${BASE}claude`), false);
+test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionStart 훅 하나만 둔다', async () => {
+  // 리더 에이전트가 세션 안내를 맡으므로 Claude에는 SessionStart가 없다.
+  assert.deepEqual(await readdir(new URL(`${BASE}claude/`, root)), ['hooks.json']);
+  const flow = (event) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true` }];
+  assert.deepEqual(await json(`${BASE}claude/hooks.json`), { hooks: {
+    // Bash 셸에는 플러그인 변수가 없으므로 세션 시작 훅이 절대경로 명령 접두사를 알린다.
+    SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: flow('session-start') }],
+    SubagentStart: [{ hooks: flow('subagent-start') }],
+    SubagentStop: [{ hooks: flow('subagent-stop') }],
+    // 실제 Claude Code 2.1.284에서 서브에이전트 도구의 tool_name은 Agent다. 2.1.63 전 이름은 Task다.
+    PostToolUse: [{ matcher: 'Agent|Task', hooks: flow('post-agent') }] } });
+  assert.equal(await read(`${BASE}scripts/flow-queue.mjs`), await read('source/crew/runtime/flow-queue.mjs'));
   const codex = (await json(`${BASE}codex/hooks.json`)).hooks;
   assert.deepEqual(Object.keys(codex), ['SessionStart']);
   assert.equal(codex.SessionStart.length, 1);
@@ -134,7 +144,7 @@ test('crew는 Claude 훅 없이 Codex SessionStart 훅 하나만 둔다', async 
   assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/codex/session-start.json"');
   const context = await json(`${BASE}codex/session-start.json`);
   assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.2.0'));
+  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.3.0'));
   assert.ok(!context.hookSpecificOutput.additionalContext.includes('{{version}}'));
 });
 
@@ -144,9 +154,9 @@ test('두 marketplace와 catalog는 onidot과 onidot-crew를 함께 싣는다', 
   assert.deepEqual(codex.plugins.find((p) => p.name === 'onidot-crew').source, { source: 'local', path: './plugins/onidot-crew' });
   const entry = claude.plugins.find((p) => p.name === 'onidot-crew');
   assert.equal(entry.source, './plugins/onidot-crew');
-  assert.equal(entry.version, '0.2.0');
+  assert.equal(entry.version, '0.3.0');
   assert.deepEqual((await json('catalog.json')).products.find((p) => p.id === 'crew'),
-    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.2.0' });
+    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.3.0' });
 });
 
 // 원본 복사본에서 생성기를 돌려 잘못된 crew 정의를 생성 전에 거부하는지 본다.
@@ -236,17 +246,17 @@ test('생성 목록에서 빠진 crew 생성물은 generate가 지우고 --check
     await mkdir(join(crewDir, 'skills/retired-skill'), { recursive: true });
     await writeFile(join(crewDir, 'skills/retired-skill/SKILL.md'), 'old\n');
     await writeFile(join(crewDir, 'skills/plan/extra.md'), 'old\n');
-    // 옛 Claude 훅 디렉터리는 은퇴 목록으로 지운다.
-    await mkdir(join(crewDir, 'claude'), { recursive: true });
+    // claude/에는 흐름 훅 설정만 생성된다. 옛 세션 안내 파일은 남은 생성물로 지운다.
     await writeFile(join(crewDir, 'claude/hooks.json'), '{}\n');
     await writeFile(join(crewDir, 'claude/session-start.json'), '{}\n');
     const check = runGenerate(temp, '--check');
     assert.equal(check.status, 1);
-    assert.match(check.stderr, /은퇴한 생성물: plugins\/onidot-crew\/claude\n/);
-    for (const path of ['agents/writer.md', 'codex/agents/crew-writer.toml', 'skills/retired-skill', 'skills/plan/extra.md'])
+    assert.match(check.stderr, /재생성 필요: plugins\/onidot-crew\/claude\/hooks.json\n/);
+    for (const path of ['agents/writer.md', 'claude/session-start.json', 'codex/agents/crew-writer.toml', 'skills/retired-skill', 'skills/plan/extra.md'])
       assert.ok(check.stderr.includes(`남은 생성물: plugins/onidot-crew/${path}\n`), `${path}\n${check.stderr}`);
     assert.equal(runGenerate(temp).status, 0);
-    assert.equal(await readFile(join(crewDir, 'claude/hooks.json')).then(() => true, () => false), false);
+    assert.deepEqual(await readdir(join(crewDir, 'claude')), ['hooks.json']);
+    assert.ok(JSON.parse(await readFile(join(crewDir, 'claude/hooks.json'), 'utf8')).hooks.SubagentStart);
     assert.equal((await readdir(join(crewDir, 'agents'))).includes('writer.md'), false);
     assert.equal((await readdir(join(crewDir, 'agents'))).length, 17);
     assert.equal((await readdir(join(crewDir, 'codex/agents'))).includes('crew-writer.toml'), false);
@@ -278,4 +288,94 @@ test('crew 본문이 가리키는 스킬과 역할은 모두 존재하고 세션
   assert.ok(Buffer.byteLength(start) <= 3000, `세션 안내 ${Buffer.byteLength(start)} bytes`);
   const context = JSON.parse(start).hookSpecificOutput.additionalContext;
   for (const role of roles) assert.ok(context.includes(role), `세션 안내에 역할 ${role} 없음`);
+});
+
+test('work-record 스킬은 증거 기록·gate 독립 검토·완료 절차를 담고 옛 금지 문장은 없다', async () => {
+  const text = await read('source/crew/skills/work-record/SKILL.md');
+  assert.equal(text.includes('완료 처리는 아직 하지 않는다'), false);
+  assert.equal(text.includes('완료 처리는 하지 않았고'), false);
+  for (const needle of [
+    'append_work_evidence', 'GIT_COMMIT', 'record_work_verification', 'reviewBundles', 'hiddenEvidence',
+    'evidenceSetHash', 'parentSessionId', ':gate', 'verifierSessionId', 'complete_work_stage', 'COMPLETED',
+    'CONFIRMED', 'CHANGES_REQUIRED', 'HUMAN_REQUIRED', 'HEAVY', 'onidot-crew:gate', 'end_work_session',
+    'MANUAL_CHECK', 'fileSetHash', '참고 자료', 'kind', 'WIKI_PUBLISH', 'MERGE', 'DEPLOY',
+  ]) assert.ok(text.includes(needle), `work-record에 ${needle} 없음`);
+  // 증거는 참고 자료이고 커밋이 없다고 완료를 막지 않으며, 실패한 실행도 사실대로 올릴 수 있다.
+  assert.ok(text.includes('커밋이 없다고 완료를 막지 않'));
+  assert.equal(text.includes('실패한 시험은 증거로 올리지 않는다'), false);
+  assert.ok(/실패한 실행[^\n]*(올릴 수|통과로 세지)/.test(text));
+  assert.ok(/verificationMethod[^\n]*MANUAL_CHECK/.test(text));
+  // 플러그인 변수는 Bash 셸에 없다. 세션 시작 훅이 알려 준 접두사를 쓴다.
+  assert.equal(text.includes('${CLAUDE_PLUGIN_ROOT}'), false);
+  assert.equal(text.includes('${CLAUDE_PLUGIN_DATA}'), false);
+  assert.equal(text.includes('${CLAUDE_SESSION_ID}'), false);
+  assert.ok(text.includes('세션 시작 때 훅이 알려 준 명령 접두사'));
+  assert.ok(text.includes('알림이 없으면'));
+  // claim 뒤에는 세션 version이 올라가므로 bind 전에 get_work_session을 다시 읽는다.
+  const claim = text.indexOf('`claim_work`로 작업 전체를 맡는다');
+  const bind = text.indexOf('`bind_work_session`');
+  const reread = text.indexOf('`get_work_session`', claim);
+  assert.ok(claim > 0 && reread > claim && bind > reread, 'claim → get_work_session → bind 순서');
+  assert.ok(text.includes('REVISION_CONFLICT'));
+  // 작업 조건은 해시 없이 충족되도록 VERIFICATION 으로 계획한다.
+  assert.equal(text.includes('"requiredEvidenceKinds": ["<위와 같은 종류>"]'), false);
+  // gate 판정은 메인 세션과 분리: 검토 세션으로는 claim·증거·완료를 하지 않는다.
+  assert.ok(/검토 세션[^\n]*(claim|담당)[^\n]*(증거|완료)/.test(text));
+});
+
+test('work-record 스킬은 리뷰 지적(비활성 정리·기계 검사·구 작업 조건·증거 숨김)을 구체 문구로 담는다', async () => {
+  const text = await read('source/crew/skills/work-record/SKILL.md');
+  // 비활성 정리: 사람 멈춤이 아니면 다시 맡아 재개하고, 긴 작업은 ACTIVITY 이벤트로 담당을 살린다.
+  assert.ok(/PAUSED[^\n]*INACTIVITY[^\n]*사람 멈춤이 아니/.test(text), 'INACTIVITY 오류표 행');
+  assert.ok(/claim_work[^\n]*COORDINATOR[^\n]*새 세대/.test(text), '다시 맡기');
+  assert.ok(/ACTIVITY[^\n]*attemptId[^\n]*claimGeneration/.test(text), 'ACTIVITY 이벤트 필드');
+  assert.ok(text.includes('stopReason'), 'INVALID_TRANSITION은 stopReason으로 판단');
+  for (const n of ['21. ', '24. ']) assert.equal(text.split('\n').find((l) => l.startsWith(n)).includes('2절 5번'), false, `${n}번이 낡은 담당 값을 가리킴`);
+  assert.ok(text.includes('`targetKey`가 `WORK`인 살아 있는'), '현재 담당 읽기');
+  // 작업 수준 기준은 서버가 기계적으로 검사한다.
+  assert.ok(text.includes('서버가 기계적으로 검사'));
+  assert.ok(/criterionId[^\n]*kind[^\n]*verificationMethod[^\n]*통과한 실행/.test(text), 'ACCEPTANCE 검사 조건');
+  assert.ok(/`?COMMIT`?을 고르지 않고 `?MANUAL_CHECK/.test(text), '커밋하지 않을 일');
+  assert.ok(/전체 검사[^\n]*TEST[^\n]*MANUAL_CHECK/.test(text), '알려진 실패가 남을 전체 검사');
+  assert.ok(/update_work[^\n]*(전체 교체|통째로)[^\n]*reason/.test(text), 'update_work 교체');
+  assert.ok(text.includes('conditionsVersion') && /증거를 다시 올린다/.test(text));
+  assert.ok(/커밋이 없다고 완료를 막지 않[^\n]*(단계|범위)/.test(text), '완화 문장은 단계·범위 쪽');
+  // 구 작업(0.2.0) 조건 복구.
+  assert.ok(/requiredEvidenceKinds[^\n]*VERIFICATION[^\n]*(0\.2\.0|구 작업|이전 작업)[^\n]*update_work/.test(text), '구 작업 조건');
+  // 증거 호출 공통 문장과 숨은 출처 복구.
+  assert.ok(/모든 `?sourceRef`?[^\n]*`?kind`?[^\n]*필수/.test(text), 'sourceRef kind 필수');
+  assert.ok(/hiddenEvidence[^\n]*invalidate_work_evidence[^\n]*evidenceId/.test(text), '숨은 증거 무효화');
+  // 단계 완료는 빈 증거 배열, 판정의 conditionsVersion은 작업 값, HEAVY는 판정하지 않는다.
+  assert.ok(/complete_work_stage[^\n]*evidence`?: 빈 배열/.test(text));
+  assert.ok(/conditionsVersion`?은 묶음 `target`이 아니라 작업의 `conditionsVersion`/.test(text));
+  assert.ok(/`HEAVY` 작업은 22번의 판정을 기록하지 않는다/.test(text));
+  // 마무리: 흐름 대기열 끄기와 열린 검토 세션 닫기.
+  assert.ok(/25\.[^\n]*<flow> stop/.test(text), '25번 flow stop');
+  assert.ok(/14\.[\s\S]*?15\.[^\n]*검토 세션/.test(text), '인계 때 검토 세션도 닫기');
+});
+
+test('verify 스킬은 증거 기록 → 기록된 묶음 감사 → 판정 기록 → 완료 순서이고 gate 반환 어휘가 판정과 맞는다', async () => {
+  const verify = await read('source/crew/skills/verify/SKILL.md');
+  const order = verify.split('\n').find((l) => l.startsWith('7. '));
+  assert.ok(order, 'verify 7번');
+  const idx = ['증거 기록', 'gate', '판정 기록', '완료'].map((w) => order.indexOf(w));
+  assert.ok(idx.every((i) => i >= 0) && idx.every((v, i) => i === 0 || v > idx[i - 1]), `순서: ${order}`);
+  assert.ok(/evidenceIds/.test(order) && /다시 감사/.test(order));
+  const gate = await read('source/crew/agents/gate.md');
+  assert.ok(/통과 \/ 수정 필요 \/ 사람 확인 필요/.test(gate), 'gate 반환 어휘');
+  assert.equal(gate.includes('MCP 도구가 없'), false);
+  assert.ok(gate.includes('MCP 도구로 기록하지 않고 판정만 반환'));
+  assert.ok(/CHANGES_REQUIRED/.test(await read('source/crew/skills/work-record/SKILL.md')));
+  assert.ok(/보류[^\n]*CHANGES_REQUIRED/.test(await read('source/crew/skills/work-record/SKILL.md')), '보류의 기본은 CHANGES_REQUIRED');
+  const run = await read('source/crew/skills/run/SKILL.md');
+  assert.ok(/단계 반복[^\n]*안/.test(run) || /각 단계를 닫을 때/.test(run), 'run 단계 반복 안 완료');
+});
+
+test('verify 스킬과 gate 에이전트와 run 스킬이 work-record 완료 절차로 이어진다', async () => {
+  for (const file of ['source/crew/skills/verify/SKILL.md', 'source/crew/skills/run/SKILL.md', 'source/crew/agents/gate.md']) {
+    assert.ok((await read(file)).includes('work-record'), `${file}에 work-record 연결 없음`);
+  }
+  assert.ok((await read('source/crew/agents/gate.md')).includes('MCP 도구'));
+  // Codex 역할 이름은 crew-<역할>이라 gate도 crew-gate로 설치된다.
+  assert.ok((await read('source/crew/agents/gate.md')).includes('crew-gate'));
 });
