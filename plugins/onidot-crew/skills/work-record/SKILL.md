@@ -35,7 +35,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
      ```bash
      node -e 'const A="0123456789abcdefghjkmnpqrstvwxyz",n=+process.argv[1],b=(BigInt(Date.now())-1577836800000n)<<22n,r=BigInt(Math.floor(Math.random()*4194304)),o=[];for(let i=0;i<n;i++){let u=b+r+BigInt(i),s="";for(let k=60;k>=0;k-=5)s+=A[Number((u>>BigInt(k))&31n)];o.push(s)}console.log(o.join(" "))' 5
      ```
-2. 응답의 `entityId`(작업 ID)와 `version`을 기억한다. 만든 직후 상태는 `PAUSED`·`QUESTION`이다.
+2. 응답의 `entityId`(작업 ID)와 `version`을 기억한다. 만든 직후 상태는 `PAUSED`·`NOT_STARTED`(시작 전)이고, 작업 화면은 이를 사용자 확인이 필요한 일로 세지 않는다. 구 서버는 `PAUSED`·`QUESTION`으로 만든다.
 3. 계획서를 Wiki에 따로 두었다면 작업 기록에는 같은 내용을 다시 쓰지 않고 계획서 주소도 `links`에 넣는다.
 
 ## 2. 실행을 시작할 때

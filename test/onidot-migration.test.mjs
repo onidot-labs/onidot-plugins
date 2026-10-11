@@ -66,7 +66,7 @@ test('재생성과 패키징은 은퇴한 생성물을 제거하고 onidot·onid
     await writeFile(join(dir, 'dist/doraft-wiki-0.13.0.zip'), 'retired fixture');
     await writeFile(join(dir, 'dist/onidot-0.13.0.zip'), 'retired instance-bound fixture');
     execFileSync(process.execPath, ['scripts/package.mjs'], { cwd: dir });
-    assert.deepEqual((await readdir(join(dir, 'dist'))).sort(), ['SHA256SUMS', 'onidot-0.15.7.zip', 'onidot-crew-0.5.1.zip']);
+    assert.deepEqual((await readdir(join(dir, 'dist'))).sort(), ['SHA256SUMS', 'onidot-0.15.7.zip', 'onidot-crew-0.5.2.zip']);
     const archive = join(dir, 'dist/onidot-0.15.7.zip');
     const files = execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' });
     for (const path of ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', 'skills/setup-onidot/SKILL.md', 'skills/use-onidot/SKILL.md', 'scripts/oauth-helper.mjs', 'scripts/recording-check.sh', 'claude/hooks.json', 'claude/session-start.json', 'codex/hooks.json']) assert.ok(files.split('\n').includes(path), path);
@@ -77,12 +77,12 @@ test('재생성과 패키징은 은퇴한 생성물을 제거하고 onidot·onid
     assert.equal(manifest.name, 'onidot');
     assert.deepEqual(manifest.mcpServers, {});
     const hash = createHash('sha256').update(await readFile(archive)).digest('hex');
-    const crewArchive = join(dir, 'dist/onidot-crew-0.5.1.zip');
+    const crewArchive = join(dir, 'dist/onidot-crew-0.5.2.zip');
     const crewFiles = execFileSync('unzip', ['-Z1', crewArchive], { encoding: 'utf8' }).split('\n');
     for (const path of ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json', 'skills/plan/SKILL.md', 'agents/scoper.md', 'codex/agents/crew-scoper.toml', 'agents/lead.md', 'settings.json', 'codex/session-start.json', 'codex/hooks.json', 'claude/hooks.json']) assert.ok(crewFiles.includes(path), path);
     for (const path of ['claude/session-start.json', 'codex/agents/crew-lead.toml']) assert.ok(!crewFiles.includes(path), path);
     assert.deepEqual(crewFiles.filter((path) => path.startsWith('scripts/') && !path.endsWith('/')).sort(), ['scripts/codex-agents.mjs', 'scripts/flow-queue.mjs']);
     const crewHash = createHash('sha256').update(await readFile(crewArchive)).digest('hex');
-    assert.equal(await readFile(join(dir, 'dist/SHA256SUMS'), 'utf8'), `${hash}  onidot-0.15.7.zip\n${crewHash}  onidot-crew-0.5.1.zip\n`);
+    assert.equal(await readFile(join(dir, 'dist/SHA256SUMS'), 'utf8'), `${hash}  onidot-0.15.7.zip\n${crewHash}  onidot-crew-0.5.2.zip\n`);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
