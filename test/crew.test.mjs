@@ -26,7 +26,7 @@ const splitAgent = (markdown) => {
   return { front: markdown.slice(4, end).split('\n'), body: markdown.slice(end + 6) };
 };
 
-test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·스크립트를 두지 않는다', async () => {
+test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·완료 기록 검사를 두지 않는다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.name, 'onidot-crew');
   assert.equal(source.version, '0.2.0');
@@ -38,7 +38,7 @@ test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·스크립
     assert.equal(manifest.version, '0.2.0');
     assert.equal(manifest.skills, './skills/');
   }
-  assert.equal('hooks' in claude, false);
+  assert.equal(claude.hooks, './claude/hooks.json');
   assert.equal('mcpServers' in claude, false);
   assert.deepEqual(codex.mcpServers, {});
   assert.equal(codex.hooks, './codex/hooks.json');
@@ -124,8 +124,16 @@ test('리더 에이전트는 모델·도구를 상속하고 settings.json이 메
   assert.equal((await readdir(new URL(`${BASE}codex/agents/`, root))).length, 17);
 });
 
-test('crew는 Claude 훅 없이 Codex SessionStart 훅 하나만 둔다', async () => {
-  assert.equal(await exists(`${BASE}claude`), false);
+test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionStart 훅 하나만 둔다', async () => {
+  // 리더 에이전트가 세션 안내를 맡으므로 Claude에는 SessionStart가 없다.
+  assert.deepEqual(await readdir(new URL(`${BASE}claude/`, root)), ['hooks.json']);
+  const flow = (event) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true` }];
+  assert.deepEqual(await json(`${BASE}claude/hooks.json`), { hooks: {
+    SubagentStart: [{ hooks: flow('subagent-start') }],
+    SubagentStop: [{ hooks: flow('subagent-stop') }],
+    // 실제 Claude Code 2.1.284에서 서브에이전트 도구의 tool_name은 Agent다.
+    PostToolUse: [{ matcher: 'Agent', hooks: flow('post-agent') }] } });
+  assert.equal(await read(`${BASE}scripts/flow-queue.mjs`), await read('source/crew/runtime/flow-queue.mjs'));
   const codex = (await json(`${BASE}codex/hooks.json`)).hooks;
   assert.deepEqual(Object.keys(codex), ['SessionStart']);
   assert.equal(codex.SessionStart.length, 1);
@@ -236,17 +244,17 @@ test('생성 목록에서 빠진 crew 생성물은 generate가 지우고 --check
     await mkdir(join(crewDir, 'skills/retired-skill'), { recursive: true });
     await writeFile(join(crewDir, 'skills/retired-skill/SKILL.md'), 'old\n');
     await writeFile(join(crewDir, 'skills/plan/extra.md'), 'old\n');
-    // 옛 Claude 훅 디렉터리는 은퇴 목록으로 지운다.
-    await mkdir(join(crewDir, 'claude'), { recursive: true });
+    // claude/에는 흐름 훅 설정만 생성된다. 옛 세션 안내 파일은 남은 생성물로 지운다.
     await writeFile(join(crewDir, 'claude/hooks.json'), '{}\n');
     await writeFile(join(crewDir, 'claude/session-start.json'), '{}\n');
     const check = runGenerate(temp, '--check');
     assert.equal(check.status, 1);
-    assert.match(check.stderr, /은퇴한 생성물: plugins\/onidot-crew\/claude\n/);
-    for (const path of ['agents/writer.md', 'codex/agents/crew-writer.toml', 'skills/retired-skill', 'skills/plan/extra.md'])
+    assert.match(check.stderr, /재생성 필요: plugins\/onidot-crew\/claude\/hooks.json\n/);
+    for (const path of ['agents/writer.md', 'claude/session-start.json', 'codex/agents/crew-writer.toml', 'skills/retired-skill', 'skills/plan/extra.md'])
       assert.ok(check.stderr.includes(`남은 생성물: plugins/onidot-crew/${path}\n`), `${path}\n${check.stderr}`);
     assert.equal(runGenerate(temp).status, 0);
-    assert.equal(await readFile(join(crewDir, 'claude/hooks.json')).then(() => true, () => false), false);
+    assert.deepEqual(await readdir(join(crewDir, 'claude')), ['hooks.json']);
+    assert.ok(JSON.parse(await readFile(join(crewDir, 'claude/hooks.json'), 'utf8')).hooks.SubagentStart);
     assert.equal((await readdir(join(crewDir, 'agents'))).includes('writer.md'), false);
     assert.equal((await readdir(join(crewDir, 'agents'))).length, 17);
     assert.equal((await readdir(join(crewDir, 'codex/agents'))).includes('crew-writer.toml'), false);

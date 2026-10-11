@@ -14,12 +14,14 @@ const profiles = {
   wiki: { skills: 'source/skills', sessionStart: 'source/runtime/claude-session-start.json',
     scripts: ['oauth-helper.mjs', 'recording-check.sh', 'catalog-check.mjs'], recordingCheck: true, serverResources: true },
   crew: { skills: 'source/crew/skills', sessionStart: 'source/crew/runtime/session-start.json',
-    scripts: ['codex-agents.mjs'], scriptsDir: 'source/crew/runtime', recordingCheck: false, serverResources: false, agents: 'source/crew/agents',
+    scripts: ['codex-agents.mjs', 'flow-queue.mjs'], scriptsDir: 'source/crew/runtime', recordingCheck: false, serverResources: false, agents: 'source/crew/agents',
     agentsCommon: 'source/crew/agents-common.md', main: 'source/crew/main',
     // The lead agent carries the session guidance for Claude, so only Codex gets a session-start hook.
-    claudeHooks: false, sessionStartPath: 'codex/session-start.json',
+    claudeSessionStart: false, sessionStartPath: 'codex/session-start.json',
+    // Claude subagent start/stop go to a local queue that the main sends to the work ledger (work-record skill).
+    flowHooks: true,
     // These directories hold only generated files; anything not generated this run is a leftover.
-    managedDirs: ['agents', 'codex/agents', 'skills'] }
+    managedDirs: ['agents', 'claude', 'codex/agents', 'skills'] }
 };
 const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku'];
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -133,18 +135,26 @@ for (const product of catalog.products) {
       longDescription: app.description, developerName: 'onidot', category: 'Productivity',
       capabilities: ['Read', 'Write'], websiteURL: 'https://onidot.com',
       defaultPrompt: app.defaultPrompt } }));
-  // Claude account connector owns MCP. A root .mcp.json would silently attach a second server in Code.
-  outputs.set(`${base}/.claude-plugin/plugin.json`, json(profile.claudeHooks === false ? common : { ...common, hooks: './claude/hooks.json' }));
   // Both clients declare their own path; no shared default hook file is generated.
-  const claudeHooks = { SessionStart: [{ matcher: 'startup|resume|clear|compact',
-    hooks: [{ type: 'command', command: 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"' }] }] };
+  const claudeHooks = {};
+  if (profile.claudeSessionStart !== false) claudeHooks.SessionStart = [{ matcher: 'startup|resume|clear|compact',
+    hooks: [{ type: 'command', command: 'cat "${CLAUDE_PLUGIN_ROOT}/claude/session-start.json"' }] }];
   const codexHooks = { SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: [{ type: 'command',
     command: `cat "\${PLUGIN_ROOT}/${profile.sessionStartPath ?? 'claude/session-start.json'}"` }] }] };
   if (profile.recordingCheck) {
     claudeHooks.Stop = [{ hooks: [{ type: 'command', command: 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/recording-check.sh" claude' }] }];
     codexHooks.Stop = [{ hooks: [{ type: 'command', command: 'sh "${PLUGIN_ROOT}/scripts/recording-check.sh" codex' }] }];
   }
-  if (profile.claudeHooks !== false) outputs.set(`${base}/claude/hooks.json`, json({ hooks: claudeHooks }));
+  if (profile.flowHooks) {
+    // A missing node must not surface as a hook error on every subagent; the script itself always exits 0.
+    const flow = event => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true` }];
+    claudeHooks.SubagentStart = [{ hooks: flow('subagent-start') }];
+    claudeHooks.SubagentStop = [{ hooks: flow('subagent-stop') }];
+    claudeHooks.PostToolUse = [{ matcher: 'Agent', hooks: flow('post-agent') }];
+  }
+  if (Object.keys(claudeHooks).length) outputs.set(`${base}/claude/hooks.json`, json({ hooks: claudeHooks }));
+  // Claude account connector owns MCP. A root .mcp.json would silently attach a second server in Code.
+  outputs.set(`${base}/.claude-plugin/plugin.json`, json(Object.keys(claudeHooks).length ? { ...common, hooks: './claude/hooks.json' } : common));
   outputs.set(`${base}/codex/hooks.json`, json({ hooks: codexHooks }));
   const sessionStart = (await readFile(resolve(root, profile.sessionStart), 'utf8')).replaceAll('{{version}}', app.version);
   if (JSON.parse(sessionStart).hookSpecificOutput?.hookEventName !== 'SessionStart') throw Error('Invalid session start context');
@@ -182,9 +192,7 @@ outputs.set('catalog.json',json({schemaVersion:1,repository:catalog.repository,p
 let different = false;
 const check = process.argv.includes('--check');
 // W5에서 이름이 바뀐 생성물만 정리한다. 설치된 사용자 캐시나 다른 제품은 건드리지 않는다.
-for (const path of ['plugins/doraft-wiki', 'server-resources/wiki/skills/setup-doraft-wiki', 'server-resources/wiki/skills/use-doraft-wiki', 'plugins/onidot/hooks/hooks.json',
-  // crew의 Claude 훅은 리더 에이전트로 대체되어 사라졌다.
-  'plugins/onidot-crew/claude']) {
+for (const path of ['plugins/doraft-wiki', 'server-resources/wiki/skills/setup-doraft-wiki', 'server-resources/wiki/skills/use-doraft-wiki', 'plugins/onidot/hooks/hooks.json']) {
   const destination = resolve(root, path);
   if (check) {
     try { await lstat(destination); process.stderr.write(`은퇴한 생성물: ${path}\n`); different = true; }

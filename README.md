@@ -2,7 +2,7 @@
 
 onidot-studio AI 플러그인 `onidot@onidot`의 원본·생성기·설치 카탈로그·패키징을 소유한다. 서버는 onidot-studio, 공통 인증은 onidot-platform이 소유한다. 작업 기준과 결과는 [W1-22P](https://labs.onidot.com/w/0rsx2c7fbz8qm/pages/0rtx2argyggsq)에 있다.
 
-두 번째 제품 `onidot-crew@onidot`(표시 이름 onidot crew)는 계획·위임·검증·재개를 돕는 역할 서브에이전트와 업무 스킬, SessionStart 안내 훅을 제공한다. MCP 연결과 서버 반입이 없으며 Claude Code 서브에이전트(`agents/`)와 Codex 에이전트(`codex/agents/crew-*.toml`)를 함께 생성한다.
+두 번째 제품 `onidot-crew@onidot`(표시 이름 onidot crew)는 계획·위임·검증·재개를 돕는 역할 서브에이전트와 업무 스킬, Codex SessionStart 안내 훅, Claude Code 작업 흐름 훅을 제공한다. 흐름 훅(`SubagentStart`·`SubagentStop`·`Agent` 뒤 `PostToolUse`)은 [flow-queue.mjs](source/crew/runtime/flow-queue.mjs)로 서브에이전트 시작·끝을 `${CLAUDE_PLUGIN_DATA}/flow/`의 Claude 세션별 대기열에 적고 메인에 알린다. Studio로 보내는 일은 메인이 `work-record` 스킬대로 MCP로 하며, 그 스킬로 대기열을 켠 대화에서만 기록·알림이 생긴다. MCP 연결과 서버 반입이 없으며 Claude Code 서브에이전트(`agents/`)와 Codex 에이전트(`codex/agents/crew-*.toml`)를 함께 생성한다.
 
 ## 설치와 연결
 
@@ -45,7 +45,7 @@ Codex의 새 hooks는 사용자가 `/hooks`에서 정의를 검토하고 trust�
 - `source/products.json`, `source/wiki.json`: 제품 ID `wiki`, 설치 이름 `onidot`, 버전과 안내 정보의 정본이다. 인스턴스 URL을 넣지 않는다.
 - `source/skills/`: 배포 스킬의 유일한 원본이다. 서버의 활성 지침은 manifest/context로 조회한다.
 - `source/runtime/`: 연결별로 매개변수화한 선택적 OAuth helper다.
-- `source/crew.json`, `source/crew/`: onidot-crew의 정본이다. 역할 메타데이터는 `crew.json`의 `agents`, 역할 본문은 `crew/agents/<id>.md`(front matter 없음), 스킬은 `crew/skills/<name>/SKILL.md`, 세션 안내는 `crew/runtime/session-start.json`에 둔다. 생성기는 모델·effort·도구·스킬 참조와 본문의 `'''`, 역할 정의의 모르는 키(권한 키 오타), 도구 목록 필수, read-only 역할의 Claude 쓰기 도구 차단을 검증한다. 서브에이전트의 스킬은 `onidot-crew:<스킬>`로 한정해 출력하고, `agents/`·`codex/agents/`·`skills/`에서 생성 목록에 없는 파일은 지운다(`--check`는 남은 생성물로 보고한다).
+- `source/crew.json`, `source/crew/`: onidot-crew의 정본이다. 역할 메타데이터는 `crew.json`의 `agents`, 역할 본문은 `crew/agents/<id>.md`(front matter 없음), 스킬은 `crew/skills/<name>/SKILL.md`, 세션 안내는 `crew/runtime/session-start.json`에 둔다. 생성기는 모델·effort·도구·스킬 참조와 본문의 `'''`, 역할 정의의 모르는 키(권한 키 오타), 도구 목록 필수, read-only 역할의 Claude 쓰기 도구 차단을 검증한다. 서브에이전트의 스킬은 `onidot-crew:<스킬>`로 한정해 출력하고, `agents/`·`claude/`·`codex/agents/`·`skills/`에서 생성 목록에 없는 파일은 지운다(`--check`는 남은 생성물로 보고한다).
 - `scripts/`, `test/`: 생성·패키징·진단과 계약 시험을 둔다.
 - `plugins/`, `server-resources/`, `catalog.json`, `.agents/plugins/`, `.claude-plugin/`: `npm run generate`의 생성물이다. 직접 수정하지 않는다. 서버는 고정 commit·SHA256을 검증해 스킬을 반입한다.
 - `dist/`: `npm run package`가 생성하는 ZIP·SHA256SUMS이며 git에서 제외한다.
