@@ -98,7 +98,7 @@ test('고정 실행기 경로는 정상이고 옛 버전 경로는 진단 코드
   const { assessHelperCommand } = await import('../scripts/verify-codex-oauth.mjs');
   const home = '/h/.codex';
   const fixed = `ONIDOT_ALIAS=dev node "${home}/onidot-oauth/bin/oauth-helper.mjs" headers`;
-  assert.deepEqual(assessHelperCommand(fixed, { codexHome: home, exists: () => true }), []);
+  assert.deepEqual(assessHelperCommand(fixed, { codexHome: home, exists: () => true, hasTarget: () => true }), []);
   assert.deepEqual(assessHelperCommand(fixed, { codexHome: home, exists: () => false }), ['OAUTH_HELPER_LAUNCHER_MISSING']);
   const old = `node "${home}/plugins/cache/onidot/onidot/0.15.0/scripts/oauth-helper.mjs" headers`;
   assert.deepEqual(assessHelperCommand(old, { codexHome: home, exists: () => false }), ['OAUTH_HELPER_VERSIONED_PATH_GONE']);
@@ -125,4 +125,26 @@ test('config.toml에서 지정한 연결 표의 http_headers_helper만 읽는다
     assert.equal(await readHelperCommand(path, 'onidot-none'), undefined);
     assert.equal(await readHelperCommand(join(dir, 'missing.toml'), 'onidot-dev'), undefined);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('고정 실행기가 있어도 고를 대상이 없으면 ONIDOT_HELPER_NOT_FOUND를 진단한다', async () => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { assessHelperCommand, adviceFor, defaultAdvice } = await import('../scripts/verify-codex-oauth.mjs');
+  const home = await mkdtemp(join(tmpdir(), 'onidot-doctor-'));
+  try {
+    const bin = join(home, 'onidot-oauth/bin');
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(bin, 'oauth-helper.mjs'), '');
+    const cmd = `node "${bin}/oauth-helper.mjs" headers`;
+    assert.deepEqual(assessHelperCommand(cmd, { codexHome: home }), ['ONIDOT_HELPER_NOT_FOUND']);
+    await writeFile(join(bin, 'oauth-helper-fallback.mjs'), '');
+    assert.deepEqual(assessHelperCommand(cmd, { codexHome: home }), []);
+    // 안내가 섞이면 helper 안내와 기본 안내를 모두 낸다.
+    const mixed = adviceFor(['OAUTH_RESOURCE_MISMATCH', 'ONIDOT_HELPER_NOT_FOUND']);
+    assert.ok(mixed.includes('ONIDOT_HELPER_NOT_FOUND') && mixed.includes(defaultAdvice));
+    assert.equal(adviceFor(['ONIDOT_HELPER_NOT_FOUND']).includes(defaultAdvice), false);
+    assert.equal(adviceFor(['OAUTH_RESOURCE_MISMATCH']), defaultAdvice);
+  } finally { await rm(home, { recursive: true, force: true }); }
 });

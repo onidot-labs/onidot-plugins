@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickHelper } from '../source/runtime/oauth-launcher.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const marketplaceName = 'onidot';
@@ -20,19 +21,28 @@ export function diagnosticTarget(args) {
 
 // config.toml의 http_headers_helper 명령을 본다. 고정 실행기가 정상이고, 버전이 박힌 플러그인 캐시 경로는
 // 갱신 때 사라질 수 있어 이전 대상이다(경로가 이미 없으면 지금 인증 헤더가 비어 401이 쌓이는 상태다).
-export function assessHelperCommand(command, { codexHome, exists = existsSync } = {}) {
+export function assessHelperCommand(command, { codexHome, exists = existsSync, hasTarget = (home) => pickHelper(home, resolve(home, 'onidot-oauth/bin')) !== null } = {}) {
   if (!command) return [];
   const fixed = `${resolve(codexHome, 'onidot-oauth/bin/oauth-helper.mjs')}`;
-  if (command.includes(fixed)) return exists(fixed) ? [] : ['OAUTH_HELPER_LAUNCHER_MISSING'];
+  if (command.includes(fixed)) {
+    if (!exists(fixed)) return ['OAUTH_HELPER_LAUNCHER_MISSING'];
+    // 실행기가 실행 때 고를 대상(캐시 최고 버전 또는 사본)이 없으면 ONIDOT_HELPER_NOT_FOUND로 실패한다.
+    return hasTarget(codexHome) ? [] : ['ONIDOT_HELPER_NOT_FOUND'];
+  }
   const versioned = /(["'\s=]|^)([^"'\s]*\/plugins\/cache\/onidot\/onidot\/\d+\.\d+\.\d+\/scripts\/oauth-helper\.mjs)/.exec(command);
   if (versioned) return [exists(versioned[2]) ? 'OAUTH_HELPER_VERSIONED_PATH' : 'OAUTH_HELPER_VERSIONED_PATH_GONE'];
   return [];
 }
 export const helperAdvice = {
   OAUTH_HELPER_LAUNCHER_MISSING: '고정 실행기 파일이 없습니다. 플러그인의 scripts/oauth-helper-install.mjs를 다시 실행하세요.',
+  ONIDOT_HELPER_NOT_FOUND: '고정 실행기는 있지만 플러그인 캐시와 사본에 도우미가 없어 실행기가 ONIDOT_HELPER_NOT_FOUND로 실패합니다. oauth-helper-install.mjs를 다시 실행하세요.',
   OAUTH_HELPER_VERSIONED_PATH_GONE: 'http_headers_helper가 이미 지워진 버전별 캐시 경로를 가리킵니다. 지금 인증 헤더가 비어 서버에 401이 쌓입니다. oauth-helper-install.mjs를 실행하고 출력된 고정 경로로 config.toml을 바꾸세요(로그인은 다시 하지 않아도 됩니다).',
   OAUTH_HELPER_VERSIONED_PATH: 'http_headers_helper가 버전별 캐시 경로를 가리킵니다. 플러그인을 갱신하면 사라집니다. oauth-helper-install.mjs를 실행하고 출력된 고정 경로로 바꾸세요.',
 };
+
+export const defaultAdvice = '플러그인을 다시 설치하고 OAuth 재연결을 확인하세요.';
+// helper 안내가 있는 코드와 없는 코드가 섞이면 둘 다 낸다.
+export const adviceFor = (failures) => [...failures.map((code) => helperAdvice[code]).filter(Boolean), ...(failures.some((code) => !helperAdvice[code]) ? [defaultAdvice] : [])].join(' ');
 
 export function assessCodexOAuth(values) {
   const failures = [];
@@ -41,7 +51,7 @@ export function assessCodexOAuth(values) {
   if (values.installedEndpoint !== values.endpoint) failures.push('PLUGIN_ENDPOINT_MISMATCH');
   if (values.advertisedResource !== values.endpoint) failures.push('OAUTH_RESOURCE_MISMATCH');
   if (values.expectedHelper && values.installedHelper !== values.expectedHelper) failures.push('OAUTH_HELPER_MISMATCH');
-  if (values.helperCommand) failures.push(...assessHelperCommand(values.helperCommand, { codexHome: values.codexHome, exists: values.helperExists }));
+  if (values.helperCommand) failures.push(...assessHelperCommand(values.helperCommand, { codexHome: values.codexHome, exists: values.helperExists, ...(values.helperHasTarget ? { hasTarget: values.helperHasTarget } : {}) }));
   return failures;
 }
 
@@ -105,7 +115,7 @@ async function main() {
     installedEndpoint: registration.transport.url,
     advertisedResource: metadata.resource,
   });
-  if (failures.length) throw new Error(`${failures.join(', ')}: ${failures.map((code) => helperAdvice[code]).filter(Boolean).join(' ') || '플러그인을 다시 설치하고 OAuth 재연결을 확인하세요.'}`);
+  if (failures.length) throw new Error(`${failures.join(', ')}: ${adviceFor(failures)}`);
   process.stdout.write(`Codex onidot OAuth 경로 일치: ${source.version}, ${target.name}, ${target.endpoint}\n`);
 }
 

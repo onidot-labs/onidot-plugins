@@ -41,7 +41,7 @@ export async function install({ codexHome = process.env.CODEX_HOME || resolve(ho
   codexHome = resolve(codexHome);
   const bin = join(codexHome, 'onidot-oauth/bin');
   const launcher = join(bin, 'oauth-helper.mjs');
-  if (/["'\n\r\\]/.test(launcher)) throw new Error(`경로에 따옴표·역슬래시·개행이 있어 config에 안전하게 쓸 수 없습니다: ${launcher}`);
+  if (/["'\n\r\\$`]/.test(launcher)) throw new Error(`경로에 따옴표·역슬래시·개행·$·백틱이 있어 config에 안전하게 쓸 수 없습니다: ${launcher}`);
   await mkdir(bin, { recursive: true, mode: 0o700 });
   const record = await loadRecord(bin);
   const items = [];

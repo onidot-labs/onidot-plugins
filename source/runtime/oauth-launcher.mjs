@@ -2,12 +2,13 @@
 // 버전과 무관한 고정 경로 실행기. Codex의 http_headers_helper가 이 파일을 가리킨다.
 // 실행할 때마다 플러그인 캐시에서 semver가 가장 높은 oauth-helper.mjs를 골라 같은 인자·환경으로 실행한다.
 // 캐시에 없으면 설치 때 같은 폴더에 복사해 둔 사본을 쓴다. stdout에는 도우미의 출력만 나간다.
-import { readdirSync, existsSync, realpathSync } from 'node:fs';
+import { readdirSync, statSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
+const isFile = (path) => { try { return statSync(path).isFile(); } catch { return false; } };
 const compare = (a, b) => { for (let i = 1; i <= 3; i++) { const d = Number(a[i]) - Number(b[i]); if (d) return d; } return 0; };
 
 export function pickHelper(codexHome, fallbackDir) {
@@ -17,12 +18,12 @@ export function pickHelper(codexHome, fallbackDir) {
     versions = readdirSync(cache, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && SEMVER.test(entry.name))
       .map((entry) => ({ name: entry.name, match: SEMVER.exec(entry.name) }))
-      .filter((v) => existsSync(join(cache, v.name, 'scripts/oauth-helper.mjs')))
+      .filter((v) => isFile(join(cache, v.name, 'scripts/oauth-helper.mjs')))
       .sort((a, b) => compare(b.match, a.match));
   } catch { /* 캐시 없음 */ }
   if (versions.length) return join(cache, versions[0].name, 'scripts/oauth-helper.mjs');
   const copy = join(fallbackDir, 'oauth-helper-fallback.mjs');
-  return existsSync(copy) ? copy : null;
+  return isFile(copy) ? copy : null;
 }
 
 function main() {

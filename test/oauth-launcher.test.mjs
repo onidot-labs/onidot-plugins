@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFile } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -140,4 +140,37 @@ test('설치된 실행기와 사본은 설치 직후 캐시 없이도 동작한�
     assert.match(r.stderr, /ONIDOT_CONNECTION_REQUIRED/);
     assert.equal(r.stdout, '');
   } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test('최고 버전의 helper가 디렉터리이거나 없으면 다음 후보로 넘어간다', async () => {
+  const home = await tmp();
+  try {
+    const launcher = await layout(home, ['0.9.0', '0.10.0']);
+    // 0.11.0은 helper 경로가 디렉터리, 0.12.0은 scripts만 있고 파일이 없다.
+    await mkdir(join(home, 'plugins/cache/onidot/onidot/0.11.0/scripts/oauth-helper.mjs'), { recursive: true });
+    await mkdir(join(home, 'plugins/cache/onidot/onidot/0.12.0/scripts'), { recursive: true });
+    const r = await exec(launcher, ['headers']);
+    assert.equal(r.code ?? 0, 0);
+    assert.equal(JSON.parse(r.stdout).label, '0.10.0');
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test('심볼릭 링크인 버전 폴더는 후보에서 제외한다', async () => {
+  const home = await tmp();
+  try {
+    const launcher = await layout(home, ['0.9.0']);
+    const real = join(home, 'elsewhere/scripts');
+    await mkdir(real, { recursive: true });
+    await writeFile(join(real, 'oauth-helper.mjs'), fakeHelper('linked'));
+    await symlink(join(home, 'elsewhere'), join(home, 'plugins/cache/onidot/onidot/9.9.9'));
+    const r = await exec(launcher, ['headers']);
+    assert.equal(JSON.parse(r.stdout).label, '0.9.0');
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test('설치: $ 또는 백틱이 든 경로는 config에 안전하게 쓸 수 없어 거부한다', async () => {
+  const base = await tmp();
+  try {
+    for (const name of ['a$b', 'a`b']) await assert.rejects(install({ codexHome: join(base, name) }), /\$|백틱/);
+  } finally { await rm(base, { recursive: true, force: true }); }
 });
