@@ -29,13 +29,13 @@ const splitAgent = (markdown) => {
 test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·완료 기록 검사를 두지 않는다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.name, 'onidot-crew');
-  assert.equal(source.version, '0.5.3');
+  assert.equal(source.version, '0.6.0');
   assert.equal(source.displayName, 'onidot crew');
   const claude = await json(`${BASE}.claude-plugin/plugin.json`);
   const codex = await json(`${BASE}.codex-plugin/plugin.json`);
   for (const manifest of [claude, codex]) {
     assert.equal(manifest.name, 'onidot-crew');
-    assert.equal(manifest.version, '0.5.3');
+    assert.equal(manifest.version, '0.6.0');
     assert.equal(manifest.skills, './skills/');
   }
   assert.equal(claude.hooks, './claude/hooks.json');
@@ -124,15 +124,19 @@ test('리더 에이전트는 모델·도구를 상속하고 settings.json이 메
   assert.equal((await readdir(new URL(`${BASE}codex/agents/`, root))).length, 17);
 });
 
-test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionStart 훅 하나만 둔다', async () => {
+test('crew의 Claude 훅은 흐름 훅 여섯뿐이고 Codex는 SessionStart 훅 하나만 둔다', async () => {
   // 리더 에이전트가 세션 안내를 맡으므로 Claude에는 SessionStart가 없다.
   assert.deepEqual(await readdir(new URL(`${BASE}claude/`, root)), ['hooks.json']);
-  const flow = (event) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true` }];
+  // 기록만 하는 훅은 async, 모든 훅에 timeout(초)을 둔다.
+  const flow = (event, background = false) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true`,
+    timeout: 5, ...(background ? { async: true } : {}) }];
   assert.deepEqual(await json(`${BASE}claude/hooks.json`), { hooks: {
     // Bash 셸에는 플러그인 변수가 없으므로 세션 시작 훅이 절대경로 명령 접두사를 알린다.
     SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: flow('session-start') }],
-    SubagentStart: [{ hooks: flow('subagent-start') }],
-    SubagentStop: [{ hooks: flow('subagent-stop') }],
+    SessionEnd: [{ hooks: flow('session-end', true) }],
+    SubagentStart: [{ hooks: flow('subagent-start', true) }],
+    SubagentStop: [{ hooks: flow('subagent-stop', true) }],
+    Stop: [{ hooks: flow('stop', true) }],
     // 실제 Claude Code 2.1.284에서 서브에이전트 도구의 tool_name은 Agent다. 2.1.63 전 이름은 Task다.
     PostToolUse: [{ matcher: 'Agent|Task', hooks: flow('post-agent') }] } });
   assert.equal(await read(`${BASE}scripts/flow-queue.mjs`), await read('source/crew/runtime/flow-queue.mjs'));
@@ -144,7 +148,7 @@ test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionSt
   assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/codex/session-start.json"');
   const context = await json(`${BASE}codex/session-start.json`);
   assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.5.3'));
+  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.6.0'));
   assert.ok(!context.hookSpecificOutput.additionalContext.includes('{{version}}'));
 });
 
@@ -154,9 +158,9 @@ test('두 marketplace와 catalog는 onidot과 onidot-crew를 함께 싣는다', 
   assert.deepEqual(codex.plugins.find((p) => p.name === 'onidot-crew').source, { source: 'local', path: './plugins/onidot-crew' });
   const entry = claude.plugins.find((p) => p.name === 'onidot-crew');
   assert.equal(entry.source, './plugins/onidot-crew');
-  assert.equal(entry.version, '0.5.3');
+  assert.equal(entry.version, '0.6.0');
   assert.deepEqual((await json('catalog.json')).products.find((p) => p.id === 'crew'),
-    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.5.3' });
+    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.6.0' });
 });
 
 // 원본 복사본에서 생성기를 돌려 잘못된 crew 정의를 생성 전에 거부하는지 본다.
