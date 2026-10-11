@@ -14,7 +14,8 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 - 쓰기 응답의 `version`을 다음 요청의 `expectedVersion`으로 이어 쓴다.
 - `knownPolicyRevision`, `guideSnapshotId`, `deviceId`는 보내지 않는다.
 - 이벤트·사유 문장에는 줄바꿈과 비밀값처럼 보이는 문자열을 넣지 않는다. 인계 본문은 줄바꿈을 써도 된다.
-- 단계·작업의 완료 처리(`complete_work_stage`, `transition_work`의 `COMPLETED`)는 아직 하지 않는다. 끝난 단계는 진행 메모로 남긴다. 완료 처리는 서버의 완료 모델이 바뀐 뒤 이 스킬에 추가된다.
+- 서버는 이벤트의 `eventId`·`summary`·`role`·`agentId`에 다음이 들어 있으면 묶음 전체를 `VALIDATION_FAILED`로 거부한다(대소문자 무시): `bearer `, `authorization:`, `-----begin `, `sk-`, `ghp_`, `github_pat_`, 그리고 `api_key`·`api-key`·`password`·`access_token`·`refresh_token`·`secret` 바로 뒤의 `=`. `task-`·`risk-`·`desk-`처럼 `sk-`로 끝나는 낱말도 걸리므로 문장과 `eventId`에 쓰지 않는다.
+- 단계·작업의 완료 처리(`complete_work_stage`, `transition_work`의 `COMPLETED`)는 아직 하지 않는다. 끝난 단계는 3절의 `STAGE_FINISHED` 이벤트로 남긴다. 완료 처리는 서버의 완료 모델이 바뀐 뒤 이 스킬에 추가된다.
 
 ## 1. 계획이 확정되면 작업 만들기
 
@@ -52,15 +53,18 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
    - `stageId`는 `get_work`나 `get_work_flow`가 돌려준 단계의 `id`다. 메인이 직접 하는 단계는 `role`을 비운다. `role`은 UTF-8 120바이트, `summary`는 1000바이트 이하 한 줄이다.
    - `producerSeq`는 세션마다 0부터 시작해 이벤트마다 1씩 올린다. 아래 8번의 꺼내기 출력 `nextSeq`도 같은 순번을 이어 쓴다. 건너뛰면 서버가 순번 빈틈으로 표시한다.
    - `occurredAt`은 짐작하지 말고 `date -u +%Y-%m-%dT%H:%M:%SZ`로 읽은 실제 시각을 쓴다. 단계 상태는 이 시각 순으로 계산되므로 늦게 보내더라도 실제 일어난 시각을 담는다. 서버 시각보다 5초 넘게 앞서거나 작업 기록 세션을 연 시각보다 이르면 시계 어긋남(`clockSkew`)으로 표시되고 흐름 계산에서 빠진다. 그보다 오래된 시각을 따로 거부하지는 않는다.
-   - 연결된 서버가 새 종류를 몰라 `VALIDATION_FAILED`로 거부하면 예전처럼 `SUMMARY` 메모로 대신한다. 새 `idempotencyKey`로, payload에는 `workId`와 `summary`("<단계> 시작, 담당 <역할>" 또는 "<단계> 끝남, <증거 한 줄>")만 넣는다. 이 세션에서는 8번의 서브에이전트 이벤트를 남기지 않는다.
+   - 흐름 이벤트를 받는 서버인지는 연결된 도구 목록에 `get_work_flow`가 있는지로 판단한다. 없으면 예전처럼 `SUMMARY` 메모로 대신한다. payload에는 `workId`와 `summary`("<단계> 시작, 담당 <역할>" 또는 "<단계> 끝남, <증거 한 줄>")만 넣고, 8번의 서브에이전트 이벤트는 남기지 않는다. `get_work_flow`가 있는데 `VALIDATION_FAILED`가 나면 종류 탓으로 단정하지 말고 위 공통 규칙의 금지 문자열·길이·필수 필드를 먼저 고친다.
 8. 서브에이전트 시작·끝은 메인이 짐작해 쓰지 않는다. Claude Code에서는 플러그인 훅이 정확한 시각·서브에이전트 ID·역할을 Claude 세션별 대기열 파일에 적고, 메인이 그것을 보낸다. Codex에는 이 훅이 없으므로 서브에이전트 이벤트를 남기지 않는다.
-   - 켜기: 2의 6번을 마친 뒤 `node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" start --data "${CLAUDE_PLUGIN_DATA}" --work <작업 ID> --session <세션 ID>`를 Bash로 실행한다. 켠 뒤에 시작한 서브에이전트만 적힌다. 켜지 않은 대화에서는 훅이 아무것도 적지 않고 알리지도 않는다. `/clear` 뒤나 새 대화에서 이어 받으면 다시 켠다.
+   - 아래에서 `<flow> <명령>`은 Bash로 실행하는 `node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" <명령> --data "${CLAUDE_PLUGIN_DATA}" --claude-session "${CLAUDE_SESSION_ID}"`이다.
+   - 켜기: 2의 6번을 마친 뒤 `<flow> start --work <작업 ID> --session <세션 ID>`를 실행한다. 켠 뒤에 시작한 서브에이전트만 적힌다. 켜지 않은 대화에서는 훅이 아무것도 적지 않고 알리지도 않는다. `/clear` 뒤나 새 대화에서 이어 받으면 다시 켠다.
    - 단계를 맡기는 Agent 호출의 `description` 끝에 `[stage:<단계 ID>]`를 붙인다. 훅이 그 서브에이전트의 이벤트에 그 `stageId`를 붙인다. 단계와 무관한 호출(탐색·조사·자문 등)에는 붙이지 않으며, 그 이벤트는 `stageId` 없이 간다.
-   - 꺼내기: 훅이 "기록할 흐름 이벤트 N건"을 알리면, 그리고 `STAGE_FINISHED`를 보내기 직전과 백그라운드 서브에이전트의 완료 알림을 받은 뒤에 `node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" pending --data "${CLAUDE_PLUGIN_DATA}" --next-seq <다음 producerSeq>`를 실행한다. 백그라운드 서브에이전트는 끝날 때 알림 훅이 돌지 않으므로 이 확인을 빼먹지 않는다.
-   - 보내기: 출력의 `events`를 고치지 말고 그대로 `append_work_session_events`의 `events`로 보낸다. `sessionId`는 출력의 값, `idempotencyKey`도 출력의 값, `expectedVersion`은 0이다. 출력의 `nextSeq`를 다음 `producerSeq`로 이어 쓴다. 보내기가 실패해도 그렇다.
-   - 이벤트 모양: `eventId`는 대기열 항목마다 고정된 `cc-flow:<항목 ID>`다. `producerSeq`와 `stageId`는 그 항목을 처음 꺼낼 때 정해져 저장된다. 그래서 다시 꺼내면 같은 이벤트와 같은 키가 나오고, 다시 보내도 중복되지 않는다. 출력은 한 번에 100건까지이며 `more`가 0보다 크면 지운 뒤 다시 꺼낸다.
-   - 지우기: 보내기에 성공하면 `node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" ack --data "${CLAUDE_PLUGIN_DATA}" <출력의 ids>`로 지운다. 실패하면 지우지 않고 다음에 다시 꺼내 보낸다.
-   - 끄기: 인계를 남기고 이 대화에서 작업 기록을 그만둘 때(14·15번) `node "${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" stop --data "${CLAUDE_PLUGIN_DATA}"`를 실행한다. 보내지 않은 항목이 있으면 종료 코드 3으로 거부하니 먼저 보낸다. 서버가 흐름 이벤트를 받지 않는 경우처럼 버려도 될 때만 `--discard`를 붙인다.
+   - 꺼내기: 훅이 "기록할 흐름 이벤트 N건"을 알리면(알림의 명령을 그대로 써도 된다), 그리고 `STAGE_FINISHED`를 보내기 직전과 백그라운드 서브에이전트의 완료 알림을 받은 뒤에 `<flow> pending --next-seq <다음 producerSeq>`를 실행한다. 백그라운드 서브에이전트는 끝날 때 알림 훅이 돌지 않으므로 이 확인을 빼먹지 않는다. 출력의 `count`가 0이면 보내지 않는다.
+   - 보내기: 출력의 `events`를 고치지 말고 그대로 `append_work_session_events`의 `events`로 보낸다. `spaceId`는 작업의 Space, `sessionId`·`idempotencyKey`는 출력의 값, `expectedVersion`은 0이다. 이 묶음에 메인이 직접 쓰는 단계 이벤트를 섞지 않는다. 출력의 `nextSeq`를 다음 `producerSeq`로 이어 쓴다. 보내기가 실패해도 그렇다.
+   - 이벤트 모양: `eventId`는 대기열 항목마다 고정된 `cc-flow:<항목 ID>`다. `producerSeq`와 `stageId`는 그 항목을 처음 꺼낼 때 정해져 저장된다. 그래서 다시 꺼내면 같은 이벤트와 같은 키가 나오고, 다시 보내도 중복되지 않는다. 키는 이벤트 내용에서 만들므로 항목이 빠지거나 단계가 떨어지면 키도 바뀐다. 출력은 한 번에 100건까지이며 `more`가 0보다 크면 지운 뒤 다시 꺼낸다.
+   - 지우기: 보내기에 성공하면 `<flow> ack <출력의 ids>`로 지운다. 실패하면 지우지 않고 다음에 다시 꺼내 보낸다.
+   - 묶음이 거부되면: `TARGET_MISMATCH`이면 계획에서 빠진 단계다. `<flow> unstage --stage <그 단계 ID>`로 단계 ID만 떼고 다시 꺼내 보낸다. `VALIDATION_FAILED`이면 금지 문자열에 걸린 항목을 찾아 그 항목 ID만 `<flow> ack`로 버리고 나머지를 다시 꺼내 보낸다. 훅은 걸리는 `role`을 빼고 걸리는 `agentId`의 항목은 적지 않지만, 서버 규칙이 바뀌었을 수 있다.
+   - 상태와 끄기: `<flow> status`는 켜짐 여부·작업·남은 항목 수를 보인다. 인계를 남기고 이 대화에서 작업 기록을 그만둘 때(14·15번) `<flow> stop`을 실행한다. 버려도 될 때만 `--discard`를 붙인다.
+   - 종료 코드: 0 성공, 1 잠금을 못 얻음(잠시 뒤 다시 실행) 또는 예상 못 한 오류, 2 잘못된 인자, 3 꺼져 있음 또는 보내지 않은 항목이 남아 거부함.
 9. 진행을 확인할 때는 `get_work_flow`(`workId`)를 부른다. `stages`의 `status`(`PENDING`·`READY`·`RUNNING`·`DONE`·`FAILED`·`BLOCKED`·`VERIFIED`)와 `subagents`, `lastSeq`를 돌려준다. 다음 확인 때 `afterSeq`에 이전 `lastSeq`를 넣으면 그 뒤에 기록된 흐름 이벤트만 `events`로 온다. `hasMoreEvents`가 true이면 마지막 이벤트의 `id`로 이어 읽는다. 보낸 이벤트가 상태에 보이지 않으면 보내기 응답의 `clockSkew`를 확인한다.
 10. 계획이 바뀌면 `edit_work_checklist`(`operation`: `ADD`·`REMOVE`·`RENAME`, `reason` 필수)로 단계를 고친다.
 11. 단계를 시작하기 전에 `get_work`로 두 가지를 본다.
@@ -90,12 +94,12 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 
 | 오류 | 대응 |
 | --- | --- |
-| `VALIDATION_FAILED` | 입력을 고친다. 빈 `reason`이 흔한 원인이다 |
+| `VALIDATION_FAILED` | 입력을 고친다. 빈 `reason`과 공통 규칙의 금지 문자열이 흔한 원인이다 |
 | `REVISION_CONFLICT` | `get_work`로 최신 `version`을 읽고 다시 보낸다 |
 | 응답을 못 받음 | 같은 인자와 같은 키로 다시 보낸다 |
-| `IDEMPOTENCY_KEY_REUSED` | 새 키를 쓴다 |
+| `IDEMPOTENCY_KEY_REUSED` | 새 키를 쓴다. 직접 쓴 이벤트면 `eventId`의 번호도 바꾼다(같은 `eventId`에 다른 내용은 거부된다). 대기열 이벤트는 고치지 않고 다시 꺼낸다 |
 | `CLAIM_LOST` | `get_work`의 `claims`를 본다. 다른 세션의 살아 있는 담당이면 멈추고 보고한다 |
-| `TARGET_MISMATCH` | 흐름 이벤트의 `stageId`가 그 작업의 단계가 아니다. 직접 쓴 단계 이벤트면 `get_work`로 단계 `id`를 다시 읽는다. 대기열 이벤트면 그 단계가 계획에서 빠진 것이므로 그 `stageId`를 단 항목만 `ack`로 버리고 나머지를 다시 보낸다 |
+| `TARGET_MISMATCH` | 흐름 이벤트의 `stageId`가 그 작업의 단계가 아니다. 직접 쓴 단계 이벤트면 `get_work`로 단계 `id`를 다시 읽는다. 대기열 이벤트면 8번대로 `unstage`로 단계 ID만 떼고 다시 보낸다 |
 | `INVALID_TRANSITION` | 사람이 멈춘 작업이거나 같은 상태로 바꾸려 한 것이다. 상태를 읽고 보고한다 |
 | `FORBIDDEN` | 연결 권한 문제다. 사용자에게 알린다 |
 
@@ -103,7 +107,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 
 - [ ] 작업 기록 쓰기는 메인만 했다.
 - [ ] 계획 확정 뒤 작업을 만들고 세션을 열어 작업을 맡았다.
-- [ ] 단계 시작·끝을 `STAGE_STARTED`·`STAGE_FINISHED`로 남겼다. 서버가 모르는 종류면 `SUMMARY` 메모로 대신했다.
+- [ ] 단계 시작·끝을 `STAGE_STARTED`·`STAGE_FINISHED`로 남겼다. `get_work_flow`가 없는 서버면 `SUMMARY` 메모로 대신했다.
 - [ ] Claude Code에서는 흐름 대기열을 켜고, 보내기에 성공한 항목만 지웠고, 그만둘 때 껐다.
 - [ ] 결정이 필요하면 `PAUSED`로 바꾸고 질문을 남겼다.
 - [ ] 멈출 때 인계를 남겼다.

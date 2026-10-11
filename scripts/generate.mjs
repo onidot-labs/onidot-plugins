@@ -150,7 +150,8 @@ for (const product of catalog.products) {
     const flow = event => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true` }];
     claudeHooks.SubagentStart = [{ hooks: flow('subagent-start') }];
     claudeHooks.SubagentStop = [{ hooks: flow('subagent-stop') }];
-    claudeHooks.PostToolUse = [{ matcher: 'Agent', hooks: flow('post-agent') }];
+    // Agent was named Task before Claude Code 2.1.63.
+    claudeHooks.PostToolUse = [{ matcher: 'Agent|Task', hooks: flow('post-agent') }];
   }
   if (Object.keys(claudeHooks).length) outputs.set(`${base}/claude/hooks.json`, json({ hooks: claudeHooks }));
   // Claude account connector owns MCP. A root .mcp.json would silently attach a second server in Code.

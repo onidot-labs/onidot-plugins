@@ -131,8 +131,8 @@ test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionSt
   assert.deepEqual(await json(`${BASE}claude/hooks.json`), { hooks: {
     SubagentStart: [{ hooks: flow('subagent-start') }],
     SubagentStop: [{ hooks: flow('subagent-stop') }],
-    // 실제 Claude Code 2.1.284에서 서브에이전트 도구의 tool_name은 Agent다.
-    PostToolUse: [{ matcher: 'Agent', hooks: flow('post-agent') }] } });
+    // 실제 Claude Code 2.1.284에서 서브에이전트 도구의 tool_name은 Agent다. 2.1.63 전 이름은 Task다.
+    PostToolUse: [{ matcher: 'Agent|Task', hooks: flow('post-agent') }] } });
   assert.equal(await read(`${BASE}scripts/flow-queue.mjs`), await read('source/crew/runtime/flow-queue.mjs'));
   const codex = (await json(`${BASE}codex/hooks.json`)).hooks;
   assert.deepEqual(Object.keys(codex), ['SessionStart']);

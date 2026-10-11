@@ -4,7 +4,7 @@
 // 메인의 Agent 호출이 끝나면(PostToolUse) 보낼 항목이 있다고 메인에 알린다.
 // Studio로 보내는 일은 메인이 work-record 스킬대로 MCP로 한다. 이 스크립트는 네트워크를 쓰지 않는다.
 // 대기열에는 식별자·역할·단계 ID·시각만 적는다. 프롬프트·결과 본문·전사 경로는 적지 않는다.
-import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
+import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,21 +12,40 @@ import { parseArgs } from 'node:util';
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const MAX_EVENTS = 500;
+const MAX_AGENTS = 1000;
 const BATCH = 100;
 const LOCK_WAIT_MS = 3000;
 const STALE_LOCK_MS = 10_000;
 const KEEP_DAYS = 14;
 const SESSION = /^[A-Za-z0-9_-]{1,128}$/;
-const AGENT = /^[A-Za-z0-9_.:-]{1,200}$/;
-const ROLE = /^[A-Za-z0-9_.:-]{1,120}$/;
-const LEDGER_ID = /^[0-9a-z]{1,32}$/;
+// 서버 ids.Decode가 받고 0보다 큰 13자 TSID(Crockford 소문자, i·l·o·u 없음, 첫 글자 0-7).
+const TSID = /^[0-7][0-9a-hjkmnp-tv-z]{12}$/;
+export const isTsid = (v) => typeof v === 'string' && TSID.test(v) && v !== '0000000000000';
 const STAGE_TAG = /\[stage:([0-9a-z]{13})\]/;
+
+// 서버 session_events.go의 sessionOptionalText를 그대로 옮긴다. 이 규칙에 걸리는 문자열은 묶음 전체를 VALIDATION_FAILED로 만든다.
+const FORBIDDEN_TOKENS = ['bearer ', 'authorization:', '-----begin ', 'sk-', 'ghp_', 'github_pat_'];
+const FORBIDDEN_ASSIGNMENTS = ['api_key', 'api-key', 'password', 'access_token', 'refresh_token', 'secret'];
+export function serverText(v, maxBytes) {
+  if (typeof v !== 'string' || !v.trim() || /\p{Cs}/u.test(v) || Buffer.byteLength(v) > maxBytes || /\p{Cc}/u.test(v)) return false;
+  const lower = v.toLowerCase();
+  if (FORBIDDEN_TOKENS.some((t) => lower.includes(t))) return false;
+  return !FORBIDDEN_ASSIGNMENTS.some((key) => lower.split(key).slice(1).some((rest) => rest.startsWith('=')));
+}
+// role·agentId는 서버 규칙에 더해 파일·셸에서 안전한 문자만 받는다.
+const SAFE = /^[A-Za-z0-9_.:-]+$/;
+export const validAgentId = (v) => serverText(v, 200) && SAFE.test(v);
+export const validRole = (v) => serverText(v, 120) && SAFE.test(v);
+// 항목 ID는 16진수와 점만 쓴다. 금지 문자열(sk-·ghp_ 등)과 키=값 꼴이 생길 수 없다.
+export const newId = () => `${Date.now().toString(16)}.${randomBytes(6).toString('hex')}`;
+export const eventIdOf = (id) => `cc-flow:${id}`;
 
 class UsageError extends Error {}
 class StateError extends Error {}
 class LockBusy extends Error {}
 
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const testDelay = () => { const ms = Number(process.env.FLOW_QUEUE_TEST_DELAY_MS); if (ms > 0 && ms < 5000) sleep(ms); };
 const paths = (data, sid) => {
   const dir = join(data, 'flow');
   return { dir, active: join(dir, `${sid}.active.json`), queue: join(dir, `${sid}.queue.jsonl`), lock: join(dir, `${sid}.lock`) };
@@ -37,47 +56,55 @@ const readJson = (path) => {
 // 활성 표시는 메인이 work-record 스킬로 작업을 맡을 때 start로 켠다. 없으면 훅은 디스크를 건드리지 않는다.
 const activeMarker = (p) => {
   const marker = readJson(p.active);
-  return marker && typeof marker === 'object' && LEDGER_ID.test(marker.workId) && LEDGER_ID.test(marker.sessionId) ? marker : null;
+  return marker && typeof marker === 'object' && isTsid(marker.workId) && isTsid(marker.sessionId) ? marker : null;
 };
+const readText = (path) => { try { return readFileSync(path, 'utf8'); } catch { return null; } };
 
 // 세션별 잠금. 쓰기·꺼내기·지우기가 모두 이 잠금 안에서 일어나 줄이 섞이거나 항목을 잃지 않는다.
+// 잠금 파일에 소유 토큰을 적고, 낡은 잠금은 토큰이 그대로일 때만, 자기 잠금은 자기 토큰일 때만 지운다.
 function withLock(p, fn) {
+  const token = `${process.pid}.${randomBytes(8).toString('hex')}`;
   const deadline = Date.now() + LOCK_WAIT_MS;
   for (;;) {
     try {
-      const fd = openSync(p.lock, 'wx');
-      writeSync(fd, String(process.pid));
+      const fd = openSync(p.lock, 'wx', 0o600);
+      writeSync(fd, token);
       closeSync(fd);
       break;
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      try { if (Date.now() - statSync(p.lock).mtimeMs > STALE_LOCK_MS) { rmSync(p.lock, { force: true }); continue; } } catch {}
-      if (Date.now() > deadline) throw new LockBusy('대기열 잠금을 얻지 못했습니다.');
+      const seen = readText(p.lock);
+      let stale = false;
+      try { stale = Date.now() - statSync(p.lock).mtimeMs > STALE_LOCK_MS; } catch {}
+      if (stale && seen !== null && readText(p.lock) === seen) { rmSync(p.lock, { force: true }); continue; }
+      if (Date.now() > deadline) throw new LockBusy('대기열 잠금을 얻지 못했습니다. 잠시 뒤 다시 실행하세요.');
       sleep(15);
     }
   }
-  try { return fn(); } finally { rmSync(p.lock, { force: true }); }
+  try { return fn(); } finally { if (readText(p.lock) === token) rmSync(p.lock, { force: true }); }
 }
 
-// 대기열 줄: {k:'agent', agentId, role?, stageId?} 또는 {k:'event', id, type, agentId, role?, occurredAt, seq?, stageId?}.
+// 대기열 줄:
+//   {k:'agent', agentId, started?:true, role?, stageId?}  서브에이전트 시작 또는 단계 연결
+//   {k:'event', id, type, agentId, role?, workId, sessionId, occurredAt, seq?, stageId?}
 const readRecords = (p) => {
   let text;
   try { text = readFileSync(p.queue, 'utf8'); } catch (e) { if (e.code === 'ENOENT') return []; throw e; }
   const out = [];
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
-    try { const v = JSON.parse(line); if (v && typeof v === 'object' && (v.k === 'agent' || v.k === 'event') && AGENT.test(v.agentId)) out.push(v); } catch {}
+    try { const v = JSON.parse(line); if (v && typeof v === 'object' && (v.k === 'agent' || v.k === 'event') && validAgentId(v.agentId)) out.push(v); } catch {}
   }
   return out;
 };
 const writeRecords = (p, records) => {
   const tmp = `${p.queue}.${process.pid}.tmp`;
-  writeFileSync(tmp, records.map((r) => JSON.stringify(r) + '\n').join(''));
+  writeFileSync(tmp, records.map((r) => JSON.stringify(r) + '\n').join(''), { mode: 0o600 });
   renameSync(tmp, p.queue);
 };
-const append = (p, ...records) => appendFileSync(p.queue, records.map((r) => JSON.stringify(r) + '\n').join(''));
+const append = (p, ...records) => appendFileSync(p.queue, records.map((r) => JSON.stringify(r) + '\n').join(''), { mode: 0o600 });
 const events = (records) => records.filter((r) => r.k === 'event');
-const newId = () => `${Date.now().toString(36)}-${randomBytes(6).toString('hex')}`;
+const agents = (records) => records.filter((r) => r.k === 'agent');
 const shellQuote = (v) => `'${String(v).replaceAll("'", `'\\''`)}'`;
 
 // ---- 훅 ----
@@ -87,55 +114,65 @@ function hookContext(raw) {
   const input = JSON.parse(raw);
   if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.session_id !== 'string' || !SESSION.test(input.session_id)) return null;
   const p = paths(data, input.session_id);
-  const marker = activeMarker(p);
-  return marker ? { data, input, p, marker } : null;
+  // 잠금 밖의 첫 확인. 활성 표시가 없으면 잠금 파일도 만들지 않는다.
+  return activeMarker(p) ? { data, input, p, sid: input.session_id } : null;
 }
 const subagent = (input) => {
   const agentId = input.agent_id, role = input.agent_type;
-  // 내부 에이전트(프롬프트 제안 등)는 agent_type이 비어 있다.
-  if (typeof agentId !== 'string' || !AGENT.test(agentId) || typeof role !== 'string' || !role) return null;
-  return { agentId, ...(ROLE.test(role) ? { role } : {}) };
+  // 내부 에이전트(프롬프트 제안 등)는 agent_type이 비어 있다. agentId가 서버 규칙에 걸리면 기록하지 않는다.
+  if (!validAgentId(agentId) || typeof role !== 'string' || !role) return null;
+  // role은 선택 필드다. 서버 규칙에 걸리면(예: task-runner의 sk-) 빼고 적는다.
+  return { agentId, ...(validRole(role) ? { role } : {}) };
 };
+const eventRecord = (type, who, marker) => ({ k: 'event', id: newId(), type, ...who, workId: marker.workId, sessionId: marker.sessionId, occurredAt: new Date().toISOString() });
 
 const hooks = {
   'subagent-start'(ctx) {
     const who = subagent(ctx.input);
     if (!who) return;
     withLock(ctx.p, () => {
-      if (events(readRecords(ctx.p)).length >= MAX_EVENTS) return;
-      append(ctx.p, { k: 'agent', ...who },
-        { k: 'event', id: newId(), type: 'SUBAGENT_STARTED', ...who, occurredAt: new Date().toISOString() });
+      const marker = activeMarker(ctx.p);
+      if (!marker) return;
+      const records = readRecords(ctx.p);
+      if (events(records).length >= MAX_EVENTS) return;
+      append(ctx.p, ...(agents(records).length < MAX_AGENTS ? [{ k: 'agent', ...who, started: true }] : []), eventRecord('SUBAGENT_STARTED', who, marker));
     });
   },
   'subagent-stop'(ctx) {
     const who = subagent(ctx.input);
     if (!who) return;
     withLock(ctx.p, () => {
+      const marker = activeMarker(ctx.p);
+      if (!marker) return;
       const records = readRecords(ctx.p);
       // 시작을 본 서브에이전트만 끝을 적는다. 활성 전에 시작했거나 내부 에이전트면 건너뛴다.
-      if (!records.some((r) => r.k === 'agent' && r.agentId === who.agentId)) return;
+      if (!records.some((r) => r.k === 'agent' && r.started && r.agentId === who.agentId)) return;
       if (events(records).length >= MAX_EVENTS) return;
-      append(ctx.p, { k: 'event', id: newId(), type: 'SUBAGENT_FINISHED', ...who, occurredAt: new Date().toISOString() });
+      append(ctx.p, eventRecord('SUBAGENT_FINISHED', who, marker));
     });
   },
   'post-agent'(ctx) {
     const { input, p } = ctx;
-    if (input.tool_name !== 'Agent') return;
+    // Agent는 2.1.63 전 이름이 Task였다.
+    if (input.tool_name !== 'Agent' && !(input.tool_name === 'Task' && typeof input.tool_input?.subagent_type === 'string')) return;
     const response = input.tool_response, description = input.tool_input?.description;
     const agentId = response && typeof response === 'object' ? response.agentId : undefined;
     const tag = typeof description === 'string' ? description.match(STAGE_TAG) : null;
-    const count = withLock(p, () => {
+    const state = withLock(p, () => {
+      const marker = activeMarker(p);
+      if (!marker) return null;
       const records = readRecords(p);
       // 단계를 맡긴 호출의 description 끝 표식 [stage:<단계 ID>]만 읽어 그 서브에이전트에 단계를 붙인다.
-      if (tag && typeof agentId === 'string' && records.some((r) => r.k === 'agent' && r.agentId === agentId)) append(p, { k: 'agent', agentId, stageId: tag[1] });
-      return events(records).length;
+      // 백그라운드 호출은 SubagentStart보다 먼저 끝날 수 있으므로 시작 기록이 없어도 연결을 저장한다.
+      if (tag && isTsid(tag[1]) && validAgentId(agentId) && agents(records).length < MAX_AGENTS) append(p, { k: 'agent', agentId, stageId: tag[1] });
+      return { marker, count: events(records).length };
     });
     // 서브에이전트 안의 Agent 호출에는 알리지 않는다. 작업 기록 쓰기는 메인만 한다.
-    if (typeof input.agent_id === 'string' && input.agent_id || !count) return;
-    const command = `node ${shellQuote(SCRIPT)}`;
-    const context = [`onidot crew: 기록할 흐름 이벤트 ${count}건이 대기열에 있습니다(작업 ${ctx.marker.workId}). onidot-crew:work-record 스킬의 3절대로 append_work_session_events로 보내고, 성공하면 지우세요.`,
-      `꺼내기: ${command} pending --data ${shellQuote(ctx.data)} --next-seq <다음 producerSeq>`,
-      `보낸 뒤 지우기: ${command} ack --data ${shellQuote(ctx.data)} <꺼내기 출력의 ids>`].join('\n');
+    if (!state || typeof input.agent_id === 'string' && input.agent_id || !state.count) return;
+    const command = `node ${shellQuote(SCRIPT)}`, args = `--data ${shellQuote(ctx.data)} --claude-session ${shellQuote(ctx.sid)}`;
+    const context = [`onidot crew: 기록할 흐름 이벤트 ${state.count}건이 대기열에 있습니다(작업 ${state.marker.workId}). onidot-crew:work-record 스킬의 3절 8번대로 append_work_session_events로 보내고, 성공하면 지우세요.`,
+      `꺼내기: ${command} pending ${args} --next-seq <다음 producerSeq>`,
+      `보낸 뒤 지우기: ${command} ack ${args} <꺼내기 출력의 ids>`].join('\n');
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: context } }));
   },
 };
@@ -159,34 +196,46 @@ function runHook(name) {
 function commandContext(values) {
   const data = values.data;
   if (!data || !isAbsolute(data)) throw new UsageError('--data에 플러그인 데이터 디렉터리의 절대경로를 주세요(스킬 본문의 ${CLAUDE_PLUGIN_DATA}).');
-  const sid = values['claude-session'] ?? process.env.CLAUDE_CODE_SESSION_ID;
+  // 스킬 치환이 안 된 환경에서는 빈 값이 오므로 Bash의 CLAUDE_CODE_SESSION_ID로 넘어간다.
+  const sid = values['claude-session'] || process.env.CLAUDE_CODE_SESSION_ID;
   if (!sid || !SESSION.test(sid)) throw new UsageError('Claude 세션 ID를 알 수 없습니다. Claude Code의 Bash에서 실행하거나 --claude-session을 주세요.');
   return { sid, p: paths(data, sid) };
 }
 const ledgerId = (value, flag) => {
-  if (!value || !LEDGER_ID.test(value)) throw new UsageError(`${flag}에 작업 기록 ID(소문자·숫자)를 주세요.`);
+  if (!isTsid(value)) throw new UsageError(`${flag}에 작업 기록 ID(13자 TSID)를 주세요.`);
   return value;
 };
 const out = (value) => process.stdout.write(JSON.stringify(value, null, 2) + '\n');
 
+// 다른 세션의 파일은 그 세션 파일 중 가장 최근 수정 시각이 기한을 넘었을 때만 함께 지운다.
+function cleanup(dir, sid) {
+  const cutoff = Date.now() - KEEP_DAYS * 24 * 3600 * 1000;
+  const sessions = new Map();
+  for (const name of readdirSync(dir)) {
+    const owner = name.split('.')[0];
+    if (owner === sid) continue;
+    let mtime = 0;
+    try { mtime = statSync(join(dir, name)).mtimeMs; } catch { continue; }
+    const s = sessions.get(owner) ?? { latest: 0, names: [] };
+    s.latest = Math.max(s.latest, mtime);
+    s.names.push(name);
+    sessions.set(owner, s);
+  }
+  for (const s of sessions.values()) if (s.latest < cutoff) for (const name of s.names) rmSync(join(dir, name), { force: true });
+}
+
 const commands = {
   start(values, ctx) {
     const workId = ledgerId(values.work, '--work'), sessionId = ledgerId(values.session, '--session');
-    mkdirSync(ctx.p.dir, { recursive: true });
-    // 오래된 다른 세션의 표시·대기열은 정리한다.
-    const cutoff = Date.now() - KEEP_DAYS * 24 * 3600 * 1000;
-    for (const name of readdirSync(ctx.p.dir)) {
-      if (name.startsWith(`${ctx.sid}.`)) continue;
-      const path = join(ctx.p.dir, name);
-      try { if (statSync(path).mtimeMs < cutoff) rmSync(path, { force: true }); } catch {}
-    }
+    cleanup(ctx.p.dir, ctx.sid);
     withLock(ctx.p, () => {
       const marker = activeMarker(ctx.p);
       const left = events(readRecords(ctx.p)).length;
-      if (marker && (marker.workId !== workId || marker.sessionId !== sessionId) && left)
-        throw new StateError(`다른 작업(${marker.workId})의 보내지 않은 흐름 이벤트 ${left}건이 있습니다. 먼저 보내고 ack하거나 stop --discard로 버리세요.`);
-      if (marker && (marker.workId !== workId || marker.sessionId !== sessionId)) rmSync(ctx.p.queue, { force: true });
-      writeFileSync(ctx.p.active, JSON.stringify({ workId, sessionId, startedAt: new Date().toISOString() }) + '\n');
+      const same = marker && marker.workId === workId && marker.sessionId === sessionId;
+      if (!same && left)
+        throw new StateError(`보내지 않은 흐름 이벤트 ${left}건이 있습니다(작업 ${marker?.workId ?? '알 수 없음'}). 먼저 보내고 ack하거나 stop --discard로 버리세요.`);
+      if (!same) rmSync(ctx.p.queue, { force: true });
+      writeFileSync(ctx.p.active, JSON.stringify({ workId, sessionId, startedAt: new Date().toISOString() }) + '\n', { mode: 0o600 });
     });
     out({ active: true, claudeSession: ctx.sid, workId, sessionId });
   },
@@ -194,24 +243,26 @@ const commands = {
     const raw = values['next-seq'];
     if (raw === undefined || !/^\d{1,15}$/.test(raw)) throw new UsageError('--next-seq에 다음 producerSeq(0 이상 정수)를 주세요.');
     const nextSeq = Number(raw);
-    const marker = activeMarker(ctx.p);
-    if (!marker) throw new StateError('켜진 작업 흐름 기록이 없습니다. start로 켜세요.');
     const result = withLock(ctx.p, () => {
+      const marker = activeMarker(ctx.p);
+      if (!marker) throw new StateError('켜진 작업 흐름 기록이 없습니다. start로 켜세요.');
       const all = readRecords(ctx.p);
-      let records = all;
+      testDelay();
+      // 지금 켜진 작업·세션의 항목만 낸다. 한 요청은 한 세션의 이벤트만 담는다.
+      const mine = (r) => r.k === 'event' && r.workId === marker.workId && r.sessionId === marker.sessionId;
       const stages = new Map();
-      for (const r of records) if (r.k === 'agent' && typeof r.stageId === 'string' && /^[0-9a-z]{13}$/.test(r.stageId)) stages.set(r.agentId, r.stageId);
+      for (const r of agents(all)) if (isTsid(r.stageId)) stages.set(r.agentId, r.stageId);
       // 아직 순번을 받지 않은 같은 서브에이전트의 끝 이벤트는 마지막 하나만 남긴다.
       const lastFinish = new Map();
-      for (const r of events(records)) if (r.type === 'SUBAGENT_FINISHED' && r.seq === undefined) {
+      for (const r of all) if (mine(r) && r.type === 'SUBAGENT_FINISHED' && r.seq === undefined) {
         const prev = lastFinish.get(r.agentId);
         if (!prev || r.occurredAt >= prev.occurredAt) lastFinish.set(r.agentId, r);
       }
-      records = records.filter((r) => !(r.k === 'event' && r.type === 'SUBAGENT_FINISHED' && r.seq === undefined && lastFinish.get(r.agentId) !== r));
+      const records = all.filter((r) => !(mine(r) && r.type === 'SUBAGENT_FINISHED' && r.seq === undefined && lastFinish.get(r.agentId) !== r));
       // 처음 꺼낼 때 순번과 단계를 정해 저장한다. 다시 꺼내도 같은 이벤트가 나와 재전송이 중복되지 않는다.
       let seq = nextSeq;
-      for (const r of events(records)) if (Number.isSafeInteger(r.seq)) seq = Math.max(seq, r.seq + 1);
-      const fresh = events(records).filter((r) => r.seq === undefined)
+      for (const r of records) if (mine(r) && Number.isSafeInteger(r.seq)) seq = Math.max(seq, r.seq + 1);
+      const fresh = records.filter((r) => mine(r) && r.seq === undefined)
         .sort((a, b) => a.occurredAt < b.occurredAt ? -1 : a.occurredAt > b.occurredAt ? 1 : a.id < b.id ? -1 : 1);
       for (const r of fresh) {
         r.seq = seq++;
@@ -219,16 +270,17 @@ const commands = {
         if (stageId) r.stageId = stageId;
       }
       if (fresh.length || records.length !== all.length) writeRecords(ctx.p, records);
-      return { list: events(records).sort((a, b) => a.seq - b.seq), nextSeq: seq };
+      return { marker, list: records.filter(mine).sort((a, b) => a.seq - b.seq), nextSeq: seq };
     });
     // 서버는 한 요청에 이벤트 100개까지 받는다. 순번이 앞선 것부터 100개씩 낸다.
     const batch = result.list.slice(0, BATCH);
-    const list = batch.map((r) => ({ schemaVersion: 1, eventId: `cc-flow:${r.id}`, sessionId: marker.sessionId, producerSeq: r.seq,
+    const list = batch.map((r) => ({ schemaVersion: 1, eventId: eventIdOf(r.id), sessionId: r.sessionId, producerSeq: r.seq,
       occurredAt: r.occurredAt, type: r.type,
-      payload: { workId: marker.workId, ...(r.stageId ? { stageId: r.stageId } : {}), ...(r.role ? { role: r.role } : {}), agentId: r.agentId } }));
+      payload: { workId: r.workId, ...(r.stageId ? { stageId: r.stageId } : {}), ...(r.role ? { role: r.role } : {}), agentId: r.agentId } }));
     const ids = batch.map((r) => r.id);
-    out({ workId: marker.workId, sessionId: marker.sessionId, count: list.length, more: result.list.length - batch.length,
-      idempotencyKey: `crew:flow:${createHash('sha256').update(ids.join('\n')).digest('hex').slice(0, 24)}`,
+    out({ workId: result.marker.workId, sessionId: result.marker.sessionId, count: list.length, more: result.list.length - batch.length,
+      // 키는 보낼 이벤트 내용 전체에서 만든다. 같은 묶음은 같은 키, 항목이나 단계가 바뀌면 다른 키다.
+      idempotencyKey: `crew:flow:${createHash('sha256').update(JSON.stringify(list)).digest('hex').slice(0, 24)}`,
       nextSeq: result.nextSeq, ids, events: list });
   },
   ack(values, ctx, positionals) {
@@ -236,9 +288,28 @@ const commands = {
     const drop = new Set(positionals);
     const result = withLock(ctx.p, () => {
       const records = readRecords(ctx.p);
-      const kept = records.filter((r) => !(r.k === 'event' && drop.has(r.id)));
+      testDelay();
+      const removed = events(records).filter((r) => drop.has(r.id));
+      let kept = records.filter((r) => !(r.k === 'event' && drop.has(r.id)));
+      // 끝 이벤트를 보낸 서브에이전트의 기록은 남은 이벤트가 없으면 지운다. 다시 시작하면 새로 적힌다.
+      const finished = new Set(removed.filter((r) => r.type === 'SUBAGENT_FINISHED').map((r) => r.agentId));
+      const busy = new Set(events(kept).map((r) => r.agentId));
+      kept = kept.filter((r) => !(r.k === 'agent' && finished.has(r.agentId) && !busy.has(r.agentId)));
       if (kept.length !== records.length) writeRecords(ctx.p, kept);
-      return { acked: records.length - kept.length, remaining: events(kept).length };
+      return { acked: removed.length, remaining: events(kept).length };
+    });
+    out(result);
+  },
+  // 계획에서 빠진 단계(TARGET_MISMATCH)의 ID만 대기열 항목에서 떼어 나머지 내용으로 다시 보낼 수 있게 한다.
+  unstage(values, ctx) {
+    const stageId = values.stage;
+    if (!isTsid(stageId)) throw new UsageError('--stage에 뗄 단계 ID(13자 TSID)를 주세요.');
+    const result = withLock(ctx.p, () => {
+      const records = readRecords(ctx.p);
+      let changed = 0;
+      for (const r of records) if (r.stageId === stageId) { delete r.stageId; if (r.k === 'event') changed++; }
+      writeRecords(ctx.p, records.filter((r) => !(r.k === 'agent' && !r.started && !r.stageId)));
+      return { unstaged: changed };
     });
     out(result);
   },
@@ -258,16 +329,17 @@ const commands = {
   },
 };
 
+// 종료 코드: 0 성공, 1 잠금 실패·예상 못 한 오류, 2 잘못된 인자, 3 상태 오류(꺼져 있음·보내지 않은 항목 있음).
 function runCommand(argv) {
   try {
     const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: {
       data: { type: 'string' }, 'claude-session': { type: 'string' }, work: { type: 'string' }, session: { type: 'string' },
-      'next-seq': { type: 'string' }, discard: { type: 'boolean' } } });
+      'next-seq': { type: 'string' }, stage: { type: 'string' }, discard: { type: 'boolean' } } });
     const [name, ...rest] = positionals;
-    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | status | stop | hook <subagent-start|subagent-stop|post-agent>');
+    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | hook <subagent-start|subagent-stop|post-agent>');
     const ctx = commandContext(values);
     // 이 세션의 잠금 파일을 만들 디렉터리. status는 읽기만 하므로 만들지 않는다.
-    if (name !== 'status') mkdirSync(ctx.p.dir, { recursive: true });
+    if (name !== 'status') mkdirSync(ctx.p.dir, { recursive: true, mode: 0o700 });
     commands[name](values, ctx, rest);
   } catch (e) {
     process.stderr.write(`flow-queue: ${e.message}\n`);
@@ -276,5 +348,9 @@ function runCommand(argv) {
   }
 }
 
-if (process.argv[2] === 'hook') runHook(process.argv[3]);
-else runCommand(process.argv.slice(2));
+// 시험이 검증 함수를 import할 수 있게, 직접 실행됐을 때만 명령을 처리한다.
+const direct = (() => { try { return realpathSync(process.argv[1] ?? '') === realpathSync(SCRIPT); } catch { return false; } })();
+if (direct) {
+  if (process.argv[2] === 'hook') runHook(process.argv[3]);
+  else runCommand(process.argv.slice(2));
+}

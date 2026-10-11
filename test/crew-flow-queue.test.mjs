@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, readFile, readdir, rm, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile, mkdir, stat, utimes } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const script = join(root, 'source/crew/runtime/flow-queue.mjs');
+const { serverText, validAgentId, validRole, isTsid, newId, eventIdOf } = await import(script);
 const SID = '8cbb5482-3793-4c9d-bde6-2a408981e067';
 const WORK = '0rwm0wcpqz6mg';
 const LEDGER = '0rwm1abcdefgh';
@@ -31,8 +32,8 @@ const hookAsync = (data, event, input) => new Promise((resolve) => {
 // 메인이 Bash로 부르는 명령. Claude 세션은 CLAUDE_CODE_SESSION_ID에서 읽는다.
 const cli = (data, ...args) => spawnSync(process.execPath, [script, ...args, '--data', data], {
   encoding: 'utf8', env: { PATH: process.env.PATH, CLAUDE_CODE_SESSION_ID: SID } });
-const cliAsync = (data, ...args) => new Promise((resolve) => {
-  const child = spawn(process.execPath, [script, ...args, '--data', data], { env: { PATH: process.env.PATH, CLAUDE_CODE_SESSION_ID: SID } });
+const cliAsync = (data, args, env = {}) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [script, ...args, '--data', data], { env: { PATH: process.env.PATH, CLAUDE_CODE_SESSION_ID: SID, ...env } });
   let out = '';
   child.stdout.on('data', (d) => { out += d; });
   child.on('close', (status) => resolve({ status, stdout: out }));
@@ -93,6 +94,10 @@ test('잘못된 입력에도 훅은 종료 코드 0으로 조용히 끝난다', 
       assert.equal(r.stderr, '', JSON.stringify(input));
     }
     assert.equal(pending(f.data, 0).count, 0);
+    // 탈출 목적지(<data>/escape.*)에 활성 표시를 심어 두어도 그 자리에 대기열·잠금이 생기지 않는다.
+    await writeFile(join(f.data, 'escape.active.json'), JSON.stringify({ workId: WORK, sessionId: LEDGER }));
+    for (const event of ['subagent-start', 'post-agent']) assert.equal(hook(f.data, event, { ...subagentStart('e1'), ...(event === 'post-agent' ? postAgent('e1') : {}), session_id: '../escape' }).status, 0);
+    assert.deepEqual((await readdir(f.data)).sort(), ['escape.active.json', 'flow']);
     // 데이터 디렉터리 자리에 파일이 있어도 막지 않는다.
     const blocked = join(f.data, 'blocked');
     await writeFile(blocked, 'x');
@@ -120,8 +125,8 @@ test('훅이 시작·끝을 쓰고 메인에 알리며, pending은 고정된 이
     const context = output.hookSpecificOutput.additionalContext;
     assert.match(context, /기록할 흐름 이벤트 1건/);
     assert.ok(context.includes('onidot-crew:work-record'));
-    assert.ok(context.includes(`'${script}' pending --data '${f.data}' --next-seq`), context);
-    assert.ok(context.includes(`'${script}' ack --data '${f.data}'`), context);
+    assert.ok(context.includes(`'${script}' pending --data '${f.data}' --claude-session '${SID}' --next-seq`), context);
+    assert.ok(context.includes(`'${script}' ack --data '${f.data}' --claude-session '${SID}'`), context);
     // SubagentStop은 한 서브에이전트에 여러 번 올 수 있다. 보내기 전이면 마지막 하나로 모은다.
     hook(f.data, 'subagent-stop', subagentStop('a1'));
     await new Promise((r) => setTimeout(r, 15));
@@ -136,7 +141,7 @@ test('훅이 시작·끝을 쓰고 메인에 알리며, pending은 고정된 이
       assert.deepEqual(Object.keys(event), ['schemaVersion', 'eventId', 'sessionId', 'producerSeq', 'occurredAt', 'type', 'payload']);
       assert.equal(event.schemaVersion, 1);
       assert.equal(event.sessionId, LEDGER);
-      assert.match(event.eventId, /^cc-flow:[a-z0-9-]+$/);
+      assert.match(event.eventId, /^cc-flow:[0-9a-f]+\.[0-9a-f]{12}$/);
       assert.match(event.occurredAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
       assert.deepEqual(event.payload, { workId: WORK, stageId: STAGE, role: 'onidot-crew:worker', agentId: 'a1' });
     }
@@ -185,34 +190,55 @@ test('병렬 훅 쓰기와 꺼내기·지우기가 겹쳐도 줄이 섞이거나
   const f = await fixture();
   try {
     start(f.data);
-    const total = 40;
-    const writers = Array.from({ length: total }, (_, i) => hookAsync(f.data, 'subagent-start', subagentStart(`p${i}`)));
-    const acked = new Set();
-    let nextSeq = 0;
-    const drainer = (async () => {
-      for (let round = 0; round < 8; round++) {
-        const r = await cliAsync(f.data, 'pending', '--next-seq', String(nextSeq));
-        assert.equal(r.status, 0);
-        const out = JSON.parse(r.stdout);
-        nextSeq = out.nextSeq;
-        if (out.ids.length) {
-          const a = await cliAsync(f.data, 'ack', ...out.ids);
-          assert.equal(a.status, 0);
-          for (const event of out.events) acked.add(event.payload.agentId);
-        }
-      }
-    })();
-    const results = await Promise.all(writers);
-    await drainer;
-    assert.ok(results.every((r) => r.status === 0));
-    const rest = pending(f.data, nextSeq);
-    const seen = [...acked, ...rest.events.map((e) => e.payload.agentId)];
-    assert.equal(seen.length, total);
-    assert.equal(new Set(seen).size, total);
-    const seqs = rest.events.map((e) => e.producerSeq);
-    assert.deepEqual(seqs, [...seqs].sort((a, b) => a - b));
+    hook(f.data, 'subagent-start', subagentStart('seed'));
+    // 꺼내기가 대기열을 읽고 다시 쓰기 전에 400ms 머물게 한다. 그 사이에 훅 20개가 쓴다.
+    // 잠금이 없으면 이 창에 쓴 줄은 다시 쓰기로 덮여 반드시 사라진다.
+    const drain = cliAsync(f.data, ['pending', '--next-seq', '0'], { FLOW_QUEUE_TEST_DELAY_MS: '400' });
+    await new Promise((r) => setTimeout(r, 120));
+    const total = 20;
+    const writers = await Promise.all(Array.from({ length: total }, (_, i) => hookAsync(f.data, 'subagent-start', subagentStart(`p${i}`))));
+    const drained = await drain;
+    assert.equal(drained.status, 0);
+    assert.ok(writers.every((r) => r.status === 0));
+    const first = JSON.parse(drained.stdout);
+    // 지우기도 같은 창을 둔다.
+    const ack = cliAsync(f.data, ['ack', ...first.ids], { FLOW_QUEUE_TEST_DELAY_MS: '400' });
+    await new Promise((r) => setTimeout(r, 120));
+    const more = await Promise.all(Array.from({ length: 10 }, (_, i) => hookAsync(f.data, 'subagent-start', subagentStart(`q${i}`))));
+    assert.equal((await ack).status, 0);
+    assert.ok(more.every((r) => r.status === 0));
+    const rest = pending(f.data, first.nextSeq);
+    const seen = [...first.events, ...rest.events].map((e) => e.payload.agentId);
+    assert.equal(seen.length, 1 + total + 10);
+    assert.equal(new Set(seen).size, seen.length);
     const lines = (await readFile(join(f.data, 'flow', `${SID}.queue.jsonl`), 'utf8')).split('\n').filter(Boolean);
     for (const line of lines) JSON.parse(line);
+  } finally { await f.cleanup(); }
+});
+
+test('낡은 잠금은 치우고, 살아 있는 잠금은 3초 기다린 뒤 조용히 포기한다', async () => {
+  const f = await fixture();
+  try {
+    start(f.data);
+    const lock = join(f.data, 'flow', `${SID}.lock`);
+    await writeFile(lock, 'other.token');
+    const past = new Date(Date.now() - 20_000);
+    await utimes(lock, past, past);
+    assert.equal(hook(f.data, 'subagent-start', subagentStart('s1')).status, 0);
+    assert.equal(pending(f.data, 0).count, 1);
+    // 막 잡힌 잠금은 기다리다 포기한다. 훅은 0, 명령은 1로 끝나고 남의 잠금을 지우지 않는다.
+    await writeFile(lock, 'live.token');
+    const began = Date.now();
+    const r = hook(f.data, 'subagent-start', subagentStart('s2'));
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout, '');
+    assert.ok(Date.now() - began >= 2900);
+    const busy = cli(f.data, 'pending', '--next-seq', '0');
+    assert.equal(busy.status, 1);
+    assert.match(busy.stderr, /잠금/);
+    assert.equal(await readFile(lock, 'utf8'), 'live.token');
+    await rm(lock);
+    assert.deepEqual(pending(f.data, 0).events.map((e) => e.payload.agentId), ['s1']);
   } finally { await f.cleanup(); }
 });
 
@@ -221,11 +247,16 @@ test('대기열은 상한을 넘겨 커지지 않는다', async () => {
   try {
     start(f.data);
     const path = join(f.data, 'flow', `${SID}.queue.jsonl`);
-    const line = (i) => JSON.stringify({ k: 'event', id: `x${i}`, type: 'SUBAGENT_STARTED', agentId: `x${i}`, occurredAt: new Date().toISOString() });
+    const line = (i) => JSON.stringify({ k: 'event', id: `x${i}`, type: 'SUBAGENT_STARTED', agentId: `x${i}`, workId: WORK, sessionId: LEDGER, occurredAt: new Date().toISOString() });
     await writeFile(path, Array.from({ length: 500 }, (_, i) => line(i)).join('\n') + '\n');
     hook(f.data, 'subagent-start', subagentStart('over'));
-    const lines = (await readFile(path, 'utf8')).split('\n').filter(Boolean);
+    let lines = (await readFile(path, 'utf8')).split('\n').filter(Boolean);
     assert.equal(lines.length, 500);
+    // 끝 이벤트도 상한을 넘기지 않는다(시작을 본 서브에이전트라도).
+    await writeFile(path, JSON.stringify({ k: 'agent', agentId: 'seen', started: true }) + '\n' + lines.join('\n') + '\n');
+    hook(f.data, 'subagent-stop', subagentStop('seen'));
+    lines = (await readFile(path, 'utf8')).split('\n').filter(Boolean);
+    assert.equal(lines.length, 501);
     // 서버는 한 요청에 이벤트 100개까지 받는다. 꺼내기는 100개씩 내고 남은 수를 알린다.
     const first = pending(f.data, 7);
     assert.equal(first.count, 100);
@@ -251,7 +282,7 @@ test('stop은 보내지 않은 항목이 있으면 거부하고, 끄면 훅이 �
     const status = JSON.parse(cli(f.data, 'status').stdout);
     assert.deepEqual(status, { active: true, workId: WORK, sessionId: LEDGER, pending: 1 });
     // 다른 작업으로 바꾸는 start도 남은 항목이 있으면 거부한다.
-    assert.equal(cli(f.data, 'start', '--work', '0rwm9otherwrk', '--session', LEDGER).status, 3);
+    assert.equal(cli(f.data, 'start', '--work', '0rwm9thxrwrk0', '--session', LEDGER).status, 3);
     assert.equal(cli(f.data, 'stop', '--discard').status, 0);
     assert.deepEqual(await files(f.data), []);
     assert.deepEqual(JSON.parse(cli(f.data, 'status').stdout), { active: false, pending: 0 });
@@ -269,6 +300,11 @@ test('명령 인자는 시작할 때 검증한다', async () => {
     const bad = [
       ['start', '--work', WORK],
       ['start', '--work', '../x', '--session', LEDGER],
+      // 서버 ids.Decode가 받지 않는 형식: i·l·o·u, 첫 글자 8 이상, 길이, 0.
+      ['start', '--work', '0rwm0wcpqz6mo', '--session', LEDGER],
+      ['start', '--work', WORK, '--session', '8rwm1abcdefgh'],
+      ['start', '--work', '0rwm0wcpqz6m', '--session', LEDGER],
+      ['start', '--work', '0000000000000', '--session', LEDGER],
       ['start', '--work', WORK, '--session', LEDGER, '--claude-session', '../x'],
       ['pending'],
       ['pending', '--next-seq', '-1'],
@@ -285,14 +321,110 @@ test('명령 인자는 시작할 때 검증한다', async () => {
     assert.equal(relative.status, 2);
     const noSession = spawnSync(process.execPath, [script, 'status', '--data', f.data], { encoding: 'utf8', env: { PATH: process.env.PATH } });
     assert.equal(noSession.status, 2);
-    // 오래된 다른 세션 파일은 start가 정리한다.
+    // 다른 세션 파일은 그 세션의 가장 최근 수정이 14일을 넘었을 때만 start가 함께 지운다.
     await mkdir(join(f.data, 'flow'), { recursive: true });
-    const old = join(f.data, 'flow', 'old-session.queue.jsonl');
-    await writeFile(old, '');
-    const { utimes } = await import('node:fs/promises');
     const past = new Date(Date.now() - 20 * 24 * 3600 * 1000);
-    await utimes(old, past, past);
+    for (const name of ['old-session.queue.jsonl', 'old-session.active.json', 'live-session.active.json', 'live-session.queue.jsonl']) {
+      await writeFile(join(f.data, 'flow', name), '');
+      if (name !== 'live-session.queue.jsonl') await utimes(join(f.data, 'flow', name), past, past);
+    }
     start(f.data);
-    assert.deepEqual((await files(f.data)).sort(), [`${SID}.active.json`]);
+    assert.deepEqual((await files(f.data)).sort(), [`${SID}.active.json`, 'live-session.active.json', 'live-session.queue.jsonl']);
+    // 파일 권한은 사용자만 읽고 쓴다.
+    assert.equal((await stat(join(f.data, 'flow', `${SID}.active.json`))).mode & 0o777, 0o600);
+  } finally { await f.cleanup(); }
+});
+
+test('대기열 항목은 서버의 금지 문자열·ID 규칙을 통과하는 값만 보낸다', async () => {
+  // 서버 session_events.go sessionOptionalText와 같은 판정.
+  for (const bad of ['task-runner', 'risk-reviewer', 'desk-1', 'Bearer x', 'authorization:x', '-----BEGIN x', 'ghp_x', 'github_pat_x', 'my_secret=1', 'password=x', 'api-key=x', ' ', '줄\n바꿈', 'x'.repeat(121)])
+    assert.equal(serverText(bad, 120), false, bad);
+  for (const good of ['onidot-crew:worker', 'secret', 'password manager', 'general-purpose', 'Explore']) assert.equal(serverText(good, 120), true, good);
+  assert.equal(validRole('task-runner'), false);
+  assert.equal(validAgentId('agent sk-1'), false);
+  assert.equal(validAgentId('a9d0a96ce83bebff1'), true);
+  for (const id of ['0rwm2stage0aa', '7zzzzzzzzzzzz']) assert.equal(isTsid(id), true, id);
+  for (const id of ['0rwm2stage0ai', '0rwm2stage0al', '0rwm2stage0ao', '0rwm2stage0au', '8000000000000', '0000000000000', '0RWM2STAGE0AA', '0rwm2stage0a']) assert.equal(isTsid(id), false, id);
+  // 무작위로 많이 만들어도 eventId는 항상 통과한다. 예전 형식(base36 시각-hex)은 'sk-'를 만들 수 있었다.
+  assert.equal(serverText(`cc-flow:${(1791682945796).toString(36)}-0a1b2c`, 200), false);
+  for (let i = 0; i < 20000; i++) { const eventId = eventIdOf(newId()); assert.equal(serverText(eventId, 200), true, eventId); }
+});
+
+test('서버 규칙에 걸리는 role은 빼고, agentId가 걸리면 그 항목을 적지 않는다', async () => {
+  const f = await fixture();
+  try {
+    start(f.data);
+    hook(f.data, 'subagent-start', subagentStart('r1', 'task-runner'));
+    hook(f.data, 'subagent-start', subagentStart('desk-1', 'onidot-crew:worker'));
+    hook(f.data, 'subagent-stop', subagentStop('desk-1'));
+    const out = pending(f.data, 0);
+    assert.equal(out.count, 1);
+    assert.deepEqual(out.events[0].payload, { workId: WORK, agentId: 'r1' });
+    // 잘못된 단계 표식은 단계로 쓰지 않는다.
+    hook(f.data, 'subagent-start', subagentStart('r2'));
+    hook(f.data, 'post-agent', postAgent('r2', '구현 [stage:0rwm2stage0ao]'));
+    assert.equal('stageId' in pending(f.data, 1).events[1].payload, false);
+  } finally { await f.cleanup(); }
+});
+
+test('백그라운드 호출이 SubagentStart보다 먼저 끝나도 단계 연결을 잃지 않는다', async () => {
+  const f = await fixture();
+  try {
+    start(f.data);
+    const launched = postAgent('bg1', `조사 [stage:${STAGE}]`, { tool_response: { isAsync: true, status: 'async_launched', agentId: 'bg1' } });
+    assert.equal(hook(f.data, 'post-agent', launched).stdout, '');
+    hook(f.data, 'subagent-start', subagentStart('bg1', 'onidot-crew:researcher'));
+    hook(f.data, 'subagent-stop', subagentStop('bg1', 'onidot-crew:researcher'));
+    const out = pending(f.data, 0);
+    assert.deepEqual(out.events.map((e) => [e.type, e.payload.stageId]), [['SUBAGENT_STARTED', STAGE], ['SUBAGENT_FINISHED', STAGE]]);
+    // 단계 연결만 있고 시작을 못 본 서브에이전트의 끝은 적지 않는다.
+    hook(f.data, 'post-agent', postAgent('bg2', `조사 [stage:${STAGE}]`));
+    hook(f.data, 'subagent-stop', subagentStop('bg2'));
+    assert.equal(pending(f.data, 2).count, 2);
+    // 옛 이름 Task도 받는다.
+    hook(f.data, 'subagent-start', subagentStart('t1'));
+    const task = hook(f.data, 'post-agent', { ...postAgent('t1', `x [stage:${STAGE}]`), tool_name: 'Task' });
+    assert.match(task.stdout, /흐름 이벤트 3건/);
+    // 끝 이벤트를 보내 지우면 그 서브에이전트 기록도 정리된다.
+    cli(f.data, 'ack', ...pending(f.data, 2).ids);
+    const queue = await readFile(join(f.data, 'flow', `${SID}.queue.jsonl`), 'utf8');
+    assert.equal(queue.includes('"bg1"'), false);
+  } finally { await f.cleanup(); }
+});
+
+test('훅은 항목마다 작업·세션을 적고, 켠 작업의 항목만 꺼낸다', async () => {
+  const f = await fixture();
+  try {
+    start(f.data);
+    hook(f.data, 'subagent-start', subagentStart('w1'));
+    const path = join(f.data, 'flow', `${SID}.queue.jsonl`);
+    const line = JSON.parse((await readFile(path, 'utf8')).split('\n').filter(Boolean).at(-1));
+    assert.equal(line.workId, WORK);
+    assert.equal(line.sessionId, LEDGER);
+    await writeFile(path, (await readFile(path, 'utf8')) + JSON.stringify({ ...line, id: 'f.1', agentId: 'w9', workId: '0rwm9thxrwrk0' }) + '\n');
+    assert.deepEqual(pending(f.data, 0).events.map((e) => e.payload.agentId), ['w1']);
+  } finally { await f.cleanup(); }
+});
+
+test('unstage는 빠진 단계의 ID만 떼고, 내용이 바뀌면 멱등 키도 바뀐다', async () => {
+  const f = await fixture();
+  try {
+    start(f.data);
+    hook(f.data, 'subagent-start', subagentStart('u1'));
+    hook(f.data, 'post-agent', postAgent('u1', `x [stage:${STAGE}]`));
+    const before = pending(f.data, 0);
+    assert.equal(before.events[0].payload.stageId, STAGE);
+    assert.equal(cli(f.data, 'unstage').status, 2);
+    const r = cli(f.data, 'unstage', '--stage', STAGE);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout), { unstaged: 1 });
+    const after = pending(f.data, 0);
+    assert.equal('stageId' in after.events[0].payload, false);
+    assert.equal(after.events[0].eventId, before.events[0].eventId);
+    assert.equal(after.events[0].producerSeq, before.events[0].producerSeq);
+    assert.notEqual(after.idempotencyKey, before.idempotencyKey);
+    // 이후 끝 이벤트에도 지운 단계가 다시 붙지 않는다.
+    hook(f.data, 'subagent-stop', subagentStop('u1'));
+    assert.equal('stageId' in pending(f.data, 1).events[1].payload, false);
   } finally { await f.cleanup(); }
 });
