@@ -447,8 +447,33 @@ test('SessionStart 훅은 절대경로가 든 명령 접두사를 메인에만 �
     assert.equal(hook('relative/dir', 'session-start', { session_id: SID }).stdout, '');
     assert.equal(hook(null, 'session-start', { session_id: SID }).stdout, '');
     assert.equal(hook(f.data, 'session-start', 'not json').status, 0);
-    // 알린 접두사로 status가 실제로 돈다.
-    const status = spawnSync(process.execPath, [script, 'status', '--data', f.data, '--claude-session', SID], { encoding: 'utf8', env: { PATH: process.env.PATH } });
-    assert.equal(status.status, 0, status.stderr);
+    // 알린 접두사를 셸(sh -c)로 그대로 실행해도 status가 돈다. 경로에 공백이 있어도 따옴표로 안전하다.
+    const prefix = context.match(/node '[^\n]*?' <명령> --data '[^\n]*?' --claude-session '[^']*'/)?.[0];
+    assert.ok(prefix, context);
+    const shell = spawnSync('sh', ['-c', prefix.replace('<명령>', 'status')], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+    assert.equal(shell.status, 0, shell.stderr);
+  } finally { await f.cleanup(); }
+});
+
+test('session-start는 깨진 활성 파일이 있어도 디스크를 읽지 않고 알린다', async () => {
+  const f = await fixture();
+  try {
+    await mkdir(join(f.data, 'flow'), { recursive: true });
+    await writeFile(join(f.data, 'flow', `${SID}.active.json`), '{깨진');
+    const r = hook(f.data, 'session-start', { session_id: SID, hook_event_name: 'SessionStart', source: 'startup' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(JSON.parse(r.stdout).hookSpecificOutput.additionalContext.includes('<명령>'));
+  } finally { await f.cleanup(); }
+});
+
+test('start의 활성 표시는 임시 파일을 거쳐 쓰고 남기지 않는다', async () => {
+  const f = await fixture();
+  try {
+    const r = cli(f.data, 'start', '--work', WORK, '--session', LEDGER);
+    assert.equal(r.status, 0, r.stderr);
+    const names = await files(f.data);
+    assert.ok(names.includes(`${SID}.active.json`));
+    assert.equal(names.some((n) => n.endsWith('.tmp')), false, names.join(','));
+    assert.deepEqual(JSON.parse(await readFile(join(f.data, 'flow', `${SID}.active.json`), 'utf8')).workId, WORK);
   } finally { await f.cleanup(); }
 });

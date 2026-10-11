@@ -49,7 +49,7 @@ description: 승인된 계획을 단계별로 서브에이전트에게 맡겨 �
 ## 5. 마무리
 
 - 모든 단계가 닫히면 `onidot-crew:verify` 스킬로 완료 기준 전체를 확인한다.
-- 작업 기록 중이면 단계 게이트를 통과한 단계마다 `onidot-crew:work-record` 스킬 7절대로 증거를 기록하고 gate 독립 검토를 받은 뒤 `complete_work_stage`로 닫는다. 모든 단계가 끝나면 같은 절차로 작업을 완료한다.
+- 작업 기록 중이면 단계 반복 안에서 단계 게이트를 통과한 단계마다 `onidot-crew:work-record` 스킬 7절대로 증거를 기록하고 gate 독립 검토를 받은 뒤 `complete_work_stage`로 닫는다. 모든 단계가 끝나면 같은 절차로 작업을 완료한다.
 - 진행 상황은 작업 기록 도구가 있으면 `onidot-crew:work-record` 스킬대로 단계마다 시작·끝 흐름 이벤트로, 없으면 `onidot-crew:resume` 스킬대로 남긴다. 멈출 때도 남긴다.
 - 사용자 보고는 결과를 먼저 쓰고, 완료·미완료·미검증을 나눈다.
 

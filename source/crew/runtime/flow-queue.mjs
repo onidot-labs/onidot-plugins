@@ -115,8 +115,8 @@ function hookContext(raw, name) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.session_id !== 'string' || !SESSION.test(input.session_id)) return null;
   const p = paths(data, input.session_id);
   // 잠금 밖의 첫 확인. 활성 표시가 없으면 잠금 파일도 만들지 않는다.
-  // session-start는 켜기 전에 알려야 하므로 활성 표시 없이 통과시킨다(디스크를 읽지 않는다).
-  return activeMarker(p) || name === 'session-start' ? { data, input, p, sid: input.session_id } : null;
+  // session-start는 켜기 전에 알려야 하므로 먼저 검사해 통과시킨다(활성 표시가 깨졌어도 디스크를 읽지 않는다).
+  return name === 'session-start' || activeMarker(p) ? { data, input, p, sid: input.session_id } : null;
 }
 const subagent = (input) => {
   const agentId = input.agent_id, role = input.agent_type;
@@ -245,7 +245,10 @@ const commands = {
       if (!same && left)
         throw new StateError(`보내지 않은 흐름 이벤트 ${left}건이 있습니다(작업 ${marker?.workId ?? '알 수 없음'}). 먼저 보내고 ack하거나 stop --discard로 버리세요.`);
       if (!same) rmSync(ctx.p.queue, { force: true });
-      writeFileSync(ctx.p.active, JSON.stringify({ workId, sessionId, startedAt: new Date().toISOString() }) + '\n', { mode: 0o600 });
+      // 임시 파일에 쓴 뒤 rename해 읽는 쪽이 반쯤 쓴 활성 표시를 보지 않게 한다.
+      const tmp = `${ctx.p.active}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify({ workId, sessionId, startedAt: new Date().toISOString() }) + '\n', { mode: 0o600 });
+      renameSync(tmp, ctx.p.active);
     });
     out({ active: true, claudeSession: ctx.sid, workId, sessionId });
   },

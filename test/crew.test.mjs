@@ -323,9 +323,59 @@ test('work-record 스킬은 증거 기록·gate 독립 검토·완료 절차를 
   assert.ok(/검토 세션[^\n]*(claim|담당)[^\n]*(증거|완료)/.test(text));
 });
 
+test('work-record 스킬은 리뷰 지적(비활성 정리·기계 검사·구 작업 조건·증거 숨김)을 구체 문구로 담는다', async () => {
+  const text = await read('source/crew/skills/work-record/SKILL.md');
+  // 비활성 정리: 사람 멈춤이 아니면 다시 맡아 재개하고, 긴 작업은 ACTIVITY 이벤트로 담당을 살린다.
+  assert.ok(/PAUSED[^\n]*INACTIVITY[^\n]*사람 멈춤이 아니/.test(text), 'INACTIVITY 오류표 행');
+  assert.ok(/claim_work[^\n]*COORDINATOR[^\n]*새 세대/.test(text), '다시 맡기');
+  assert.ok(/ACTIVITY[^\n]*attemptId[^\n]*claimGeneration/.test(text), 'ACTIVITY 이벤트 필드');
+  assert.ok(text.includes('stopReason'), 'INVALID_TRANSITION은 stopReason으로 판단');
+  for (const n of ['21. ', '24. ']) assert.equal(text.split('\n').find((l) => l.startsWith(n)).includes('2절 5번'), false, `${n}번이 낡은 담당 값을 가리킴`);
+  assert.ok(text.includes('`targetKey`가 `WORK`인 살아 있는'), '현재 담당 읽기');
+  // 작업 수준 기준은 서버가 기계적으로 검사한다.
+  assert.ok(text.includes('서버가 기계적으로 검사'));
+  assert.ok(/criterionId[^\n]*kind[^\n]*verificationMethod[^\n]*통과한 실행/.test(text), 'ACCEPTANCE 검사 조건');
+  assert.ok(/`?COMMIT`?을 고르지 않고 `?MANUAL_CHECK/.test(text), '커밋하지 않을 일');
+  assert.ok(/전체 검사[^\n]*TEST[^\n]*MANUAL_CHECK/.test(text), '알려진 실패가 남을 전체 검사');
+  assert.ok(/update_work[^\n]*(전체 교체|통째로)[^\n]*reason/.test(text), 'update_work 교체');
+  assert.ok(text.includes('conditionsVersion') && /증거를 다시 올린다/.test(text));
+  assert.ok(/커밋이 없다고 완료를 막지 않[^\n]*(단계|범위)/.test(text), '완화 문장은 단계·범위 쪽');
+  // 구 작업(0.2.0) 조건 복구.
+  assert.ok(/requiredEvidenceKinds[^\n]*VERIFICATION[^\n]*(0\.2\.0|구 작업|이전 작업)[^\n]*update_work/.test(text), '구 작업 조건');
+  // 증거 호출 공통 문장과 숨은 출처 복구.
+  assert.ok(/모든 `?sourceRef`?[^\n]*`?kind`?[^\n]*필수/.test(text), 'sourceRef kind 필수');
+  assert.ok(/hiddenEvidence[^\n]*invalidate_work_evidence[^\n]*evidenceId/.test(text), '숨은 증거 무효화');
+  // 단계 완료는 빈 증거 배열, 판정의 conditionsVersion은 작업 값, HEAVY는 판정하지 않는다.
+  assert.ok(/complete_work_stage[^\n]*evidence`?: 빈 배열/.test(text));
+  assert.ok(/conditionsVersion`?은 묶음 `target`이 아니라 작업의 `conditionsVersion`/.test(text));
+  assert.ok(/`HEAVY` 작업은 22번의 판정을 기록하지 않는다/.test(text));
+  // 마무리: 흐름 대기열 끄기와 열린 검토 세션 닫기.
+  assert.ok(/25\.[^\n]*<flow> stop/.test(text), '25번 flow stop');
+  assert.ok(/14\.[\s\S]*?15\.[^\n]*검토 세션/.test(text), '인계 때 검토 세션도 닫기');
+});
+
+test('verify 스킬은 증거 기록 → 기록된 묶음 감사 → 판정 기록 → 완료 순서이고 gate 반환 어휘가 판정과 맞는다', async () => {
+  const verify = await read('source/crew/skills/verify/SKILL.md');
+  const order = verify.split('\n').find((l) => l.startsWith('7. '));
+  assert.ok(order, 'verify 7번');
+  const idx = ['증거 기록', 'gate', '판정 기록', '완료'].map((w) => order.indexOf(w));
+  assert.ok(idx.every((i) => i >= 0) && idx.every((v, i) => i === 0 || v > idx[i - 1]), `순서: ${order}`);
+  assert.ok(/evidenceIds/.test(order) && /다시 감사/.test(order));
+  const gate = await read('source/crew/agents/gate.md');
+  assert.ok(/통과 \/ 수정 필요 \/ 사람 확인 필요/.test(gate), 'gate 반환 어휘');
+  assert.equal(gate.includes('MCP 도구가 없'), false);
+  assert.ok(gate.includes('MCP 도구로 기록하지 않고 판정만 반환'));
+  assert.ok(/CHANGES_REQUIRED/.test(await read('source/crew/skills/work-record/SKILL.md')));
+  assert.ok(/보류[^\n]*CHANGES_REQUIRED/.test(await read('source/crew/skills/work-record/SKILL.md')), '보류의 기본은 CHANGES_REQUIRED');
+  const run = await read('source/crew/skills/run/SKILL.md');
+  assert.ok(/단계 반복[^\n]*안/.test(run) || /각 단계를 닫을 때/.test(run), 'run 단계 반복 안 완료');
+});
+
 test('verify 스킬과 gate 에이전트와 run 스킬이 work-record 완료 절차로 이어진다', async () => {
   for (const file of ['source/crew/skills/verify/SKILL.md', 'source/crew/skills/run/SKILL.md', 'source/crew/agents/gate.md']) {
     assert.ok((await read(file)).includes('work-record'), `${file}에 work-record 연결 없음`);
   }
   assert.ok((await read('source/crew/agents/gate.md')).includes('MCP 도구'));
+  // Codex 역할 이름은 crew-<역할>이라 gate도 crew-gate로 설치된다.
+  assert.ok((await read('source/crew/agents/gate.md')).includes('crew-gate'));
 });
