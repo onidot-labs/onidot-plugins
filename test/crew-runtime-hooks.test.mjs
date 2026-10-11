@@ -314,8 +314,8 @@ test('stage start·finish는 런타임으로 가고 없으면 inbox. 잘못된 �
     const sent = events(rt).filter((x) => x.kind.startsWith('STAGE_'));
     assert.deepEqual(sent.map((x) => x.kind), ['STAGE_STARTED', 'STAGE_FINISHED']);
     assert.equal(sent[0].stageId, STAGE);
-    assert.deepEqual(sent[0].data, { role: 'onidot-crew:worker', summary: '로그인 구현 시작' });
-    assert.deepEqual(sent[1].data, { result: 'DONE', summary: '시험 12건 통과' });
+    assert.deepEqual(sent[0].data, { role: 'onidot-crew:worker', summary: '로그인 구현 시작', runId: 1 });
+    assert.deepEqual(sent[1].data, { result: 'DONE', summary: '시험 12건 통과', runId: 1 });
     assert.equal(sent[0].hostSession, SID);
     // 같은 명령을 다시 부르면 같은 eventId
     await cli(f, 'stage', 'finish', '--stage', STAGE, '--result', 'DONE', '--summary', '시험 12건 통과');
@@ -356,4 +356,28 @@ test('work-record 스킬이 런타임 모드와 대기열 모드를 구분해 �
     '<flow> stage start --stage', '<flow> stage finish --stage', '대기열 모드', '같은 `collectionScope`·`deviceId`', '`ACTIVITY`']) assert.ok(skill.includes(needle), needle);
   const generated = await readFile(join(root, 'plugins/onidot-crew/skills/work-record/SKILL.md'), 'utf8');
   assert.equal(generated, skill.replaceAll('{{version}}', '0.6.0'));
+});
+
+test('같은 단계의 재실행은 새 runId·eventId를 받고, 명령 재시도는 같은 값을 받는다', async () => {
+  const rt = await fakeRuntime(); const f = await fixture({ runtime: rt });
+  try {
+    assert.equal((await startRuntime(f)).status, 0);
+    const start = () => cli(f, 'stage', 'start', '--stage', STAGE, '--role', 'onidot-crew:worker', '--summary', '구현');
+    const finish = (r = 'DONE') => cli(f, 'stage', 'finish', '--stage', STAGE, '--result', r, '--summary', '끝');
+    for (const step of [start, start, () => finish(), () => finish(), start, start, () => finish('FAILED')]) assert.equal((await step()).status, 0);
+    const sent = events(rt).filter((x) => x.kind.startsWith('STAGE_'));
+    assert.deepEqual(sent.map((x) => [x.kind, x.data.runId]), [['STAGE_STARTED', 1], ['STAGE_STARTED', 1], ['STAGE_FINISHED', 1], ['STAGE_FINISHED', 1],
+      ['STAGE_STARTED', 2], ['STAGE_STARTED', 2], ['STAGE_FINISHED', 2]]);
+    assert.equal(sent[0].eventId, sent[1].eventId); // 시작 재시도
+    assert.equal(sent[2].eventId, sent[3].eventId); // 끝 재시도
+    assert.equal(new Set(sent.map((x) => x.eventId)).size, 4); // 1회차 시작·끝, 2회차 시작·끝은 모두 다르다
+    assert.notEqual(sent[0].eventId, sent[4].eventId);
+    assert.notEqual(sent[2].eventId, sent[6].eventId);
+    // 다른 단계는 독립된 카운터
+    await cli(f, 'stage', 'start', '--stage', '0rwm2stage0bb', '--role', 'r', '--summary', 'x');
+    assert.equal(events(rt).at(-1).data.runId, 1);
+    // finish만 오면(시작 기록 없음) 1회차로 본다
+    await cli(f, 'stage', 'finish', '--stage', '0rwm2stage0cc', '--result', 'DONE', '--summary', 'x');
+    assert.equal(events(rt).at(-1).data.runId, 1);
+  } finally { await rt.close(); await f.cleanup(); }
 });

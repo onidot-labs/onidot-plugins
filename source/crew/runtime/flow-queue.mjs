@@ -163,7 +163,7 @@ const eventIdFor = (...parts) => `cc-hook:${createHash('sha256').update(parts.jo
 const KEY = {
   SESSION_STARTED: (e) => [e.occurredAt], SESSION_ENDED: (e) => [e.occurredAt], TURN_ENDED: (e) => [e.occurredAt],
   SUBAGENT_STARTED: (e) => [e.agentId], SUBAGENT_FINISHED: (e) => [e.agentId], AGENT_LINKED: (e) => [e.agentId, e.stageId],
-  STAGE_STARTED: (e) => [e.stageId], STAGE_FINISHED: (e) => [e.stageId, e.data?.result],
+  STAGE_STARTED: (e) => [e.stageId, e.data?.runId], STAGE_FINISHED: (e) => [e.stageId, e.data?.runId, e.data?.result],
   FLOW_BOUND: (e) => [e.data?.workId, e.data?.sessionId, e.flowStartedAt], FLOW_UNBOUND: (e) => [e.data?.workId, e.data?.sessionId, e.flowStartedAt],
 };
 function envelope(kind, sid, fields = {}) {
@@ -457,7 +457,8 @@ const commands = {
       const startedAt = same && typeof marker.startedAt === 'string' ? marker.startedAt : new Date().toISOString();
       // 임시 파일에 쓴 뒤 rename해 읽는 쪽이 반쯤 쓴 활성 표시를 보지 않게 한다.
       const tmp = `${ctx.p.active}.${process.pid}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ workId, sessionId, startedAt, mode, ...(spaceId ? { spaceId } : {}) }) + '\n', { mode: 0o600 });
+      writeFileSync(tmp, JSON.stringify({ workId, sessionId, startedAt, mode, ...(spaceId ? { spaceId } : {}),
+        ...(same && marker.stages && typeof marker.stages === 'object' ? { stages: marker.stages } : {}) }) + '\n', { mode: 0o600 });
       renameSync(tmp, ctx.p.active);
       return startedAt;
     });
@@ -480,8 +481,20 @@ const commands = {
       if (!['DONE', 'FAILED', 'BLOCKED'].includes(values.result)) throw new UsageError('--result는 DONE, FAILED, BLOCKED 중 하나여야 합니다.');
       data = { result: values.result, summary: values.summary };
     }
-    const marker = activeMarker(ctx.p);
-    if (marker?.mode !== 'runtime') throw new StateError('runtime 모드로 켠 작업 흐름이 없습니다. stage 명령은 start --mode runtime 뒤에만 씁니다.');
+    // 실행 번호(runId): 끝나지 않은 단계의 start 재호출은 같은 번호(재시도), 끝난 뒤의 start는 새 번호다. 활성 표시에 단계별로 저장한다.
+    const runId = withLock(ctx.p, () => {
+      const marker = activeMarker(ctx.p);
+      if (marker?.mode !== 'runtime') throw new StateError('runtime 모드로 켠 작업 흐름이 없습니다. stage 명령은 start --mode runtime 뒤에만 씁니다.');
+      const stages = marker.stages && typeof marker.stages === 'object' ? marker.stages : {};
+      const entry = stages[stageId] ?? { run: 0, open: false };
+      const run = sub === 'start' ? (entry.open ? entry.run : entry.run + 1) : Math.max(entry.run, 1);
+      stages[stageId] = { run, open: sub === 'start' };
+      const tmp = `${ctx.p.active}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify({ ...marker, stages }) + '\n', { mode: 0o600 });
+      renameSync(tmp, ctx.p.active);
+      return run;
+    });
+    data.runId = runId;
     const sent = await sendEvent(envelope(sub === 'start' ? 'STAGE_STARTED' : 'STAGE_FINISHED', ctx.sid, { stageId, data }));
     out({ sent, stageId });
   },
