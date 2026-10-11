@@ -29,13 +29,13 @@ const splitAgent = (markdown) => {
 test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·완료 기록 검사를 두지 않는다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.name, 'onidot-crew');
-  assert.equal(source.version, '0.5.0');
+  assert.equal(source.version, '0.5.1');
   assert.equal(source.displayName, 'onidot crew');
   const claude = await json(`${BASE}.claude-plugin/plugin.json`);
   const codex = await json(`${BASE}.codex-plugin/plugin.json`);
   for (const manifest of [claude, codex]) {
     assert.equal(manifest.name, 'onidot-crew');
-    assert.equal(manifest.version, '0.5.0');
+    assert.equal(manifest.version, '0.5.1');
     assert.equal(manifest.skills, './skills/');
   }
   assert.equal(claude.hooks, './claude/hooks.json');
@@ -144,7 +144,7 @@ test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionSt
   assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/codex/session-start.json"');
   const context = await json(`${BASE}codex/session-start.json`);
   assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.5.0'));
+  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.5.1'));
   assert.ok(!context.hookSpecificOutput.additionalContext.includes('{{version}}'));
 });
 
@@ -154,9 +154,9 @@ test('두 marketplace와 catalog는 onidot과 onidot-crew를 함께 싣는다', 
   assert.deepEqual(codex.plugins.find((p) => p.name === 'onidot-crew').source, { source: 'local', path: './plugins/onidot-crew' });
   const entry = claude.plugins.find((p) => p.name === 'onidot-crew');
   assert.equal(entry.source, './plugins/onidot-crew');
-  assert.equal(entry.version, '0.5.0');
+  assert.equal(entry.version, '0.5.1');
   assert.deepEqual((await json('catalog.json')).products.find((p) => p.id === 'crew'),
-    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.5.0' });
+    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.5.1' });
 });
 
 // 원본 복사본에서 생성기를 돌려 잘못된 crew 정의를 생성 전에 거부하는지 본다.
@@ -325,8 +325,8 @@ test('work-record 스킬은 증거 기록·gate 독립 검토·완료 절차를 
 
 test('work-record 스킬은 리뷰 지적(비활성 정리·기계 검사·구 작업 조건·증거 숨김)을 구체 문구로 담는다', async () => {
   const text = await read('source/crew/skills/work-record/SKILL.md');
-  // 비활성 정리: 사람 멈춤이 아니면 다시 맡아 재개하고, 긴 작업은 ACTIVITY 이벤트로 담당을 살린다.
-  assert.ok(/PAUSED[^\n]*INACTIVITY[^\n]*사람 멈춤이 아니/.test(text), 'INACTIVITY 오류표 행');
+  // 비활성 정리: 사용자 멈춤이 아니면 다시 맡아 재개하고, 긴 작업은 ACTIVITY 이벤트로 담당을 살린다.
+  assert.ok(/PAUSED[^\n]*INACTIVITY[^\n]*사용자 멈춤이 아니/.test(text), 'INACTIVITY 오류표 행');
   assert.ok(/claim_work[^\n]*COORDINATOR[^\n]*새 세대/.test(text), '다시 맡기');
   assert.ok(/ACTIVITY[^\n]*attemptId[^\n]*claimGeneration/.test(text), 'ACTIVITY 이벤트 필드');
   assert.ok(text.includes('stopReason'), 'INVALID_TRANSITION은 stopReason으로 판단');
@@ -362,7 +362,7 @@ test('verify 스킬은 증거 기록 → 기록된 묶음 감사 → 판정 기�
   assert.ok(idx.every((i) => i >= 0) && idx.every((v, i) => i === 0 || v > idx[i - 1]), `순서: ${order}`);
   assert.ok(/evidenceIds/.test(order) && /다시 감사/.test(order));
   const gate = await read('source/crew/agents/gate.md');
-  assert.ok(/통과 \/ 수정 필요 \/ 사람 확인 필요/.test(gate), 'gate 반환 어휘');
+  assert.ok(/통과 \/ 수정 필요 \/ 사용자 확인 필요/.test(gate), 'gate 반환 어휘');
   assert.equal(gate.includes('MCP 도구가 없'), false);
   assert.ok(gate.includes('MCP 도구로 기록하지 않고 판정만 반환'));
   assert.ok(/CHANGES_REQUIRED/.test(await read('source/crew/skills/work-record/SKILL.md')));
@@ -408,7 +408,11 @@ test('위임 전 기준 확인·원문 전달·결과 대조 규칙이 리더·�
 test('crew 증거 라벨·커밋 주소·단계 담당 모델·계획 선행 규칙이 원본과 생성물에 들어 있다', async () => {
   for (const base of ['source/crew/skills', 'plugins/onidot-crew/skills']) {
     const wr = await read(`${base}/work-record/SKILL.md`);
-    assert.ok(/`sourceRef`에 `label`을 넣는다[^\n]*커밋 제목[^\n]*200자 이하 한 줄/.test(wr), `${base} label 규칙`);
+    assert.ok(/`sourceRef`에 `label`을 넣는다[^\n]*커밋 제목[^\n]*측정 원문·명령·수치 나열은 넣지 않는다/.test(wr), `${base} label 규칙`);
+    assert.ok(/`sourceRef`에 `label`을 넣는다[^\n]*60자 안팎의 사용자 말 한 줄/.test(wr), `${base} label 60자`);
+    assert.ok(wr.includes('"description": "<사용자가 확인할 일 한 문장>"'), `${base} 조건 description 예시`);
+    assert.ok(/`description`은 연결된 도구의 입력 스키마[^\n]*구 서버[^\n]*VALIDATION_FAILED[^\n]*그 필드만 빼고/.test(wr), `${base} description 구 서버 대응`);
+    assert.equal(wr.includes('사람'), false, `${base} 사람 용어`);
     assert.ok(/`COMMIT` 증거는 `sourceRef\.url`에 https 커밋 주소[^\n]*git@github\.com:owner\/repo\.git[^\n]*사용자 정보와 토큰[^\n]*제거[^\n]*원격이 없으면 `url`을 비운다/.test(wr), `${base} 커밋 URL 규칙`);
     assert.ok(wr.includes('https://<호스트>/<owner>/<repo>/commit/<sha>'), `${base} 커밋 주소 꼴`);
     assert.ok(wr.includes('{ "label": "<로그 수치 요약>" }'), `${base} TEST label-only`);

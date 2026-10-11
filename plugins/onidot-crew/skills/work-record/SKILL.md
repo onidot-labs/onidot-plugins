@@ -5,7 +5,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 
 # work-record
 
-큰 일의 계획·진행·증거·검토·완료·멈춤·인계를 Studio 작업 기록에 남긴다. 사람은 웹의 작업 화면에서 같은 기록을 본다. 작업 기록 도구가 연결돼 있지 않으면 `onidot-crew:resume` 스킬의 진행 기록 방식으로 대신한다.
+큰 일의 계획·진행·증거·검토·완료·멈춤·인계를 Studio 작업 기록에 남긴다. 사용자는 웹의 작업 화면에서 같은 기록을 본다. 작업 기록 도구가 연결돼 있지 않으면 `onidot-crew:resume` 스킬의 진행 기록 방식으로 대신한다.
 
 ## 공통 규칙
 
@@ -25,9 +25,11 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
    - `title`, `goal`: 계획의 제목과 목표
    - `grade`: 보통 `LIGHT`. 되돌리기 어렵거나 중요한 일은 `HEAVY`
    - `acceptanceCriteria`: 1개 이상. `{ "text": "<완료 기준>", "verificationMethod": "<TEST | COMMAND | COMMIT | MANUAL_CHECK | WIKI_PUBLISH 중 일의 성격에 맞는 것>" }`. git이 없는 일이나 문서·설정·조사 같은 일은 `MANUAL_CHECK`를 쓴다. 이 확인 방법은 계획 때 반드시 올릴 수 있는 종류로 고른다. 커밋·푸시하지 않을 수 있는 일(회사 작업 등)은 `COMMIT`을 고르지 않고 `MANUAL_CHECK`를 쓴다. 알려진 실패가 남을 수 있는 전체 검사는 `TEST` 대신 `MANUAL_CHECK`로 둔다. 작업 수준 완료 기준은 서버가 기계적으로 검사하므로 21번의 조건을 맞춰 올릴 수 있어야 한다
-   - `completionConditions`: 1개 이상. `{ "kind": "done", "target": { "action": "<무엇을 끝내나>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }`. 대상 해시 없이 action만 둔 조건은 요구 증거가 `VERIFICATION`이어야 독립 검토(범위 검토)로 충족된다. `approvalRequired`가 true이면 해시 없이는 충족할 수 없으므로 항상 false로 둔다. 단계 완료 조건과 작업의 범위(action) 조건은 어떤 종류의 증거든 그 범위의 묶음이 되며 독립 검토 판정이 정한다. 작업 수준 완료 기준(`acceptanceCriteria`)은 판정만으로 충족되지 않는다. 증거 종류를 고르는 법은 7절 20번, 기준 검사는 21번이다.
-   - `stages`: 계획의 단계마다 `{ "title": "<단계>", "required": true, "acceptanceCriteria": [], "completionConditions": [{ "kind": "done", "target": { "action": "<단계>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false }] }`
-   - `links`: 계획의 기준 묶음(`onidot-crew:spec-first` 2절)의 기준 문서와 기존 조사를 넣는다. 항목마다 `{ "kind": "URL", "url": "<문서 주소>" }`로 쓴다. Wiki 페이지도 페이지 주소를 `URL`로 넣는다(`WIKI_PAGE` 종류는 읽기 권한 검사에서 기록한 사람에게도 가려질 수 있다). 기준을 찾아봤는데 없었으면 비워 두고 계획서에 찾아본 곳을 적는다.
+   - `completionConditions`: 1개 이상. `{ "kind": "done", "target": { "action": "<무엇을 끝내나>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false, "description": "<사용자가 확인할 일 한 문장>" }`. 대상 해시 없이 action만 둔 조건은 요구 증거가 `VERIFICATION`이어야 독립 검토(범위 검토)로 충족된다. `approvalRequired`가 true이면 해시 없이는 충족할 수 없으므로 항상 false로 둔다. 단계 완료 조건과 작업의 범위(action) 조건은 어떤 종류의 증거든 그 범위의 묶음이 되며 독립 검토 판정이 정한다. 작업 수준 완료 기준(`acceptanceCriteria`)은 판정만으로 충족되지 않는다. 증거 종류를 고르는 법은 7절 20번, 기준 검사는 21번이다.
+   - `stages`: 계획의 단계마다 `{ "title": "<단계>", "required": true, "acceptanceCriteria": [], "completionConditions": [{ "kind": "done", "target": { "action": "<단계>" }, "requiredEvidenceKinds": ["VERIFICATION"], "approvalRequired": false, "description": "<사용자가 확인할 일 한 문장>" }] }`
+   - 조건의 `description`은 웹 검토 화면이 사용자에게 "무엇을 확인하라는 건지" 보여 주는 문장이다. 조건(작업 수준·단계)마다 쓴다. 사용자 말로 한 문장, 200자 이하, 한 줄(줄바꿈·제어 문자·비밀값 금지)로, 무엇을 보면 되는지가 드러나게 쓴다. 예: "운영 작업 상세에서 검토 카드가 확인할 내용을 한 문장으로 보여 주는지". `action`이나 증거 종류·명령을 그대로 옮기지 않는다. `create_work_checklist`·`create_work`·`set_work_stages`·`edit_work_checklist`의 단계·`update_work`의 `completionConditions` 어디서든 같다.
+   - `description`은 연결된 도구의 입력 스키마에 그 필드가 있을 때만 보낸다. 스키마에 없거나(구 서버) 보냈더니 `VALIDATION_FAILED`가 알 수 없는 필드(`description`)를 가리키면, 그 필드만 빼고 같은 `idempotencyKey`로 다시 보낸다. 다른 입력은 바꾸지 않고, 빼고 올렸다는 사실을 사용자에게 보고한다.
+   - `links`: 계획의 기준 묶음(`onidot-crew:spec-first` 2절)의 기준 문서와 기존 조사를 넣는다. 항목마다 `{ "kind": "URL", "url": "<문서 주소>" }`로 쓴다. Wiki 페이지도 페이지 주소를 `URL`로 넣는다(`WIKI_PAGE` 종류는 읽기 권한 검사에서 기록한 사용자에게도 가려질 수 있다). 기준을 찾아봤는데 없었으면 비워 두고 계획서에 찾아본 곳을 적는다.
    - 계획의 선행 관계를 그대로 남긴다. 작업 화면의 흐름 그래프는 이 의존으로 묶음 열과 간선을 그리므로, 의존이 있는 계획을 의존 없이 올리지 않는다. 단계마다 `id`를 주고 `predecessorStageIds`로 잇는다. id는 서버 형식의 13자 TSID여야 하므로 직접 지어내지 않고 발급받는다. Claude Code에서 8번의 명령 접두사가 있으면 `<flow> ids --count <단계 수>`를 쓴다. 접두사가 없거나 Codex면 아래 한 줄을 Bash로 실행한다(끝의 숫자가 단계 수, 출력은 공백으로 나눈 ID). 작업을 만들 때마다 새로 발급하고, 응답을 못 받아 다시 보낼 때는 같은 ID와 같은 `idempotencyKey`로 보낸다. 발급할 수 없으면 `id`를 비우고 의존을 계획서에 적은 뒤 그 사실을 보고한다.
    - 첫 단계는 제목 `계획`(기준 찾기·탐색·계획 작성·검증을 한 단계로 묶은 것)으로 두고, 나머지 모든 단계가 그 단계의 `id`를 `predecessorStageIds`에 포함한다(계획에서 서로 정한 선행은 그대로 함께 둔다). 흐름 그래프가 계획 단계에서 갈라져 나가는 모양이 된다. id는 위 `ids --count`로 `계획`까지 센 개수만큼 한 번에 발급한다.
      ```bash
@@ -77,8 +79,8 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
 9. 진행을 확인할 때는 `get_work_flow`(`workId`)를 부른다. `stages`의 `status`(`PENDING`·`READY`·`RUNNING`·`DONE`·`FAILED`·`BLOCKED`·`VERIFIED`)와 `subagents`, `lastSeq`를 돌려준다. 다음 확인 때 `afterSeq`에 이전 `lastSeq`를 넣으면 그 뒤에 기록된 흐름 이벤트만 `events`로 온다. `hasMoreEvents`가 true이면 마지막 이벤트의 `id`로 이어 읽는다. 보낸 이벤트가 상태에 보이지 않으면 보내기 응답의 `clockSkew`를 확인한다.
 10. 계획이 바뀌면 `edit_work_checklist`(`operation`: `ADD`·`REMOVE`·`RENAME`, `reason` 필수)로 단계를 고친다.
 11. 단계를 시작하기 전에 `get_work`로 두 가지를 본다.
-   - 사람이 남긴 지시(`pendingInstructions`)가 있으면 반영하고 `acknowledge_work_instruction`(`instructionId`, `reason`)으로 확인한다.
-   - 사람이 웹에서 작업을 멈췄으면 더 쓰지 않고 사용자에게 보고한다.
+   - 사용자가 남긴 지시(`pendingInstructions`)가 있으면 반영하고 `acknowledge_work_instruction`(`instructionId`, `reason`)으로 확인한다.
+   - 사용자가 웹에서 작업을 멈췄으면 더 쓰지 않고 사용자에게 보고한다.
 
 ## 4. 사용자 결정을 기다릴 때
 
@@ -113,7 +115,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
       - 실행 결과(시험·명령·CI): `TEST`·`COMMAND`·`CI`. 아래 시험 예시를 따른다. git이 없으면 `execution.target.fileSetHash`에 바뀐 파일 묶음의 해시를 넣는다. 예: `shasum -a 256 <바뀐 파일들>`의 줄을 정렬한 출력을 다시 `shasum -a 256`한 값.
       - 문서·설정·조사·외부 시스템 작업: `MANUAL_CHECK`. 확인한 출처를 `sourceRef`로 밝힌다. 예: `{ "kind": "FILE", "id": "<상대 경로>" }`, `{ "kind": "URL", "url": "<주소>" }`. Wiki 발행본은 21번의 `WIKI_PUBLISH` 규칙을 따른다.
       - 병합·배포: `MERGE`·`DEPLOY`.
-    - 모든 증거의 `sourceRef`에 `label`을 넣는다. 작업 화면이 증거를 한 줄로 보여 주는 값이다. 커밋은 커밋 제목, 시험은 `시험 12건 통과`처럼 로그 수치를 요약한 문장(로그에서 읽은 값만), 확인한 문서는 문서 제목을 쓴다. 200자 이하 한 줄이며 줄바꿈·비밀값을 넣지 않는다.
+    - 모든 증거의 `sourceRef`에 `label`을 넣는다. 작업 화면이 증거를 한 줄로 보여 주는 값이며 사용자가 읽는다. 60자 안팎의 사용자 말 한 줄로 쓴다(서버 상한은 200자). 커밋은 커밋 제목, 시험은 `시험 12건 통과`처럼 로그 수치를 요약한 문장(로그에서 읽은 값만), 확인한 문서는 문서 제목을 쓴다. 측정 원문·명령·수치 나열은 넣지 않는다. 그런 내용은 `execution`(`redactedCommand`·`exitCode`·`executedCount`·`failedCount`)이나 인계에 둔다. 줄바꿈·비밀값을 넣지 않는다.
     - `COMMIT` 증거는 `sourceRef.url`에 https 커밋 주소를 넣는다. `git remote get-url origin`(또는 push 대상 원격)을 읽어 `https://<호스트>/<owner>/<repo>/commit/<sha>`로 바꾼다. `https://github.com/owner/repo.git`은 끝의 `.git`을 떼고, `git@github.com:owner/repo.git`·`ssh://git@host/owner/repo.git` 같은 ssh 형식도 같은 https 주소로 바꾼다. 원격 URL 안의 사용자 정보와 토큰(`user:token@`)은 반드시 제거한다. 원격이 없으면 `url`을 비운다. 회사·비git 작업의 증거는 참고용이라 이 때문에 막지 않는다.
     - `TEST`·`COMMAND` 증거의 `sourceRef`는 `{ "label": "<로그 수치 요약>" }`만 넣는다(`kind`·`id`·`url`은 없이).
     - 증거는 종류와 무관하게 `append_work_evidence`로 올린다. `attemptId`·`claimGeneration`은 위 값, `workId`, `expectedVersion`은 최신 작업 version이다. `evidence`의 공통 필드는 `criterionId`(그 단계 완료 조건의 id), `conditionsVersion`(`get_work`의 값), `stageId`, `kind`, `occurredAt`(실제 UTC 시각)이고 종류에 따라 `sourceRef`나 `execution`이 붙는다. `TEST`·`COMMAND`의 label-only `sourceRef`를 제외한 모든 `sourceRef`에는 `kind`가 필수다. `kind` 없이 `id`·`url`만 있으면 서버가 Wiki 참조로 보고 숨은 출처(`hiddenEvidence`)로 가려 검토할 수 없다. 묶음에 `hiddenEvidence`가 나오면 `invalidate_work_evidence`(`spaceId`, `workId`, `evidenceId`, `reason` 필수, `expectedVersion`, `idempotencyKey`)로 그 증거를 무효화하고 `kind`를 단 증거를 다시 올린다.
@@ -122,34 +124,34 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 연결된 
       `execution`: `{ "target": { "action": "<조건의 action>", "sha": "<시험한 커밋 sha>", "conditionsVersion": <같은 값> }, "runId": "<시험 실행을 가리키는 비지 않은 값, 예: crew:<작업>:<단계>:test:<번호>>", "redactedCommand": "<실행한 명령>", "exitCode": <종료 코드>, "executedCount": <실행 수>, "failedCount": <실패 수> }`
       종료 코드·실행 수·실패 수는 로그의 결과 줄에서 읽은 값만 쓴다. 서버는 `exitCode` 0, `executedCount` 1 이상, `failedCount` 0, `runId` 있음, `target`의 `sha`나 `fileSetHash` 있음일 때만 통과한 실행으로 센다. 실패한 실행도 사실대로 올릴 수 있다(통과로 세지 않을 뿐이며 판정은 gate가 내린다). 알려진 실패를 포함한 전체 검사 결과처럼 판정에 필요하면 그대로 올리고, 통과했다고 쓰지 않는다.
     - `occurredAt`은 `date -u +%Y-%m-%dT%H:%M:%SZ`로 읽은 실제 시각이다. 서버 시각보다 5분 넘게 앞서면 거부된다. 쓰기마다 응답의 `version`을 다음 `expectedVersion`으로 이어 쓴다.
-21. 모든 단계를 닫은 뒤 작업 수준 증거를 기록한다. 작업의 `acceptanceCriteria`마다 20번과 같은 방식으로 올리되 `criterionId`는 그 완료 기준의 `id`, `stageId`는 비우고, `kind`는 그 기준의 `verificationMethod`(`TEST`·`COMMAND`·`COMMIT`·`MANUAL_CHECK` 등, 병합·배포는 `MERGE`·`DEPLOY`)이고 출처는 20번의 일의 성격별 기준과 같다. 작업 수준 완료 기준은 서버가 기계적으로 검사한다. `criterionId`가 그 기준의 id이고, `kind`가 그 기준의 `verificationMethod`와 같고, 실행 종류(`TEST`·`COMMAND`·`CI`)면 통과한 실행이어야 하며, gate 판정만으로는 충족되지 않는다. 기준과 맞지 않는 종류를 올렸거나 계획이 바뀌었으면 `update_work`로 `title`·`goal`·`grade`·`acceptanceCriteria`·`completionConditions`를 통째로 교체한다(`reason` 필수, `expectedVersion`은 최신 작업 version). 단계 조건은 그대로 이어지지만 `conditionsVersion`이 오르므로 고친 뒤 `get_work`로 새 값을 읽고 증거를 다시 올린다. `attemptId`·`claimGeneration`은 `get_work`의 `claims` 중 `targetKey`가 `WORK`인 살아 있는 현재 담당의 값이다(정리·인계로 바뀌었을 수 있으니 매번 읽는다). `WIKI_PUBLISH`는 서버가 발행본을 직접 확인하는 출처(`kind`: `WIKI_REVISION`, `revisionId`, `digest`와 같은 `sourceDigest`)가 있어야 한다.
+21. 모든 단계를 닫은 뒤 작업 수준 증거를 기록한다. 작업의 `acceptanceCriteria`마다 20번과 같은 방식으로 올리되 `criterionId`는 그 완료 기준의 `id`, `stageId`는 비우고, `kind`는 그 기준의 `verificationMethod`(`TEST`·`COMMAND`·`COMMIT`·`MANUAL_CHECK` 등, 병합·배포는 `MERGE`·`DEPLOY`)이고 출처는 20번의 일의 성격별 기준과 같다. 작업 수준 완료 기준은 서버가 기계적으로 검사한다. `criterionId`가 그 기준의 id이고, `kind`가 그 기준의 `verificationMethod`와 같고, 실행 종류(`TEST`·`COMMAND`·`CI`)면 통과한 실행이어야 하며, gate 판정만으로는 충족되지 않는다. 기준과 맞지 않는 종류를 올렸거나 계획이 바뀌었으면 `update_work`로 `title`·`goal`·`grade`·`acceptanceCriteria`·`completionConditions`(각 조건의 `description` 포함)를 통째로 교체한다(`reason` 필수, `expectedVersion`은 최신 작업 version). 단계 조건은 그대로 이어지지만 `conditionsVersion`이 오르므로 고친 뒤 `get_work`로 새 값을 읽고 증거를 다시 올린다. `attemptId`·`claimGeneration`은 `get_work`의 `claims` 중 `targetKey`가 `WORK`인 살아 있는 현재 담당의 값이다(정리·인계로 바뀌었을 수 있으니 매번 읽는다). `WIKI_PUBLISH`는 서버가 발행본을 직접 확인하는 출처(`kind`: `WIKI_REVISION`, `revisionId`, `digest`와 같은 `sourceDigest`)가 있어야 한다.
 22. gate 독립 검토를 받는다. 작업 등급이 `LIGHT`일 때만 한다(`HEAVY`는 26번).
     - 메인이 `onidot-crew:gate`(Codex에서는 `crew-gate`)에게 단계 결과와 증거를 감사시킨다. gate는 읽기 전용이고 MCP 도구로 기록하지 않고 판정만 반환하므로, 증거를 먼저 기록해 `get_work`의 `reviewBundles`로 받은 증거 ID와 실행 결과, 완료 기준, 커밋 해시, 시험 로그 위치를 위임 지시에 담아 준다. 감사 뒤 증거가 생겼으면 그 묶음으로 다시 감사받는다.
     - gate 반환을 받으면 검토 세션을 연다. 작업마다 한 번만 열고 재사용한다. `start_work_session`: `expectedVersion` 0, `externalSessionKey`: 메인 세션 키에 `:gate`를 붙인 값, `harness`·`collectionScope`·`binding`은 메인 세션과 같게, `parentSessionId`: 메인 세션 ID. 검토 세션으로는 `claim_work`로 담당을 잡거나 증거를 기록하거나 완료하지 않고 작업에 묶지도 않는다. 구현 시도나 증거가 생기면 그 세션의 판정은 `TARGET_MISMATCH`로 거부된다.
     - `get_work`의 `reviewBundles`에서 방금 닫은 범위의 묶음을 고른다. 단계는 `stageId`가 그 단계인 묶음, 작업 수준은 `stageId`가 없는 묶음이다. 묶음마다 다음과 같이 한다.
       - `hiddenEvidence`가 true이거나 `evidenceSetHash`가 없으면(증거 없음) 판정하지 않고 보고한다.
       - 그 밖에는 `record_work_verification`을 부른다. `target`·`evidenceIds`·`evidenceSetHash`는 묶음 값 그대로, `conditionsVersion`은 묶음 `target`이 아니라 작업의 `conditionsVersion`, `expectedVersion`은 최신 작업 version, `verifierSessionId`는 검토 세션 ID, `reason`은 필수 한 줄이다.
-      - `verdict`는 gate의 전체 판정(통과 / 수정 필요 / 사람 확인 필요)을 옮긴다. 통과는 `CONFIRMED`, 수정 필요는 `CHANGES_REQUIRED`, 사람 확인 필요는 `HUMAN_REQUIRED`다. 보류의 기본은 `CHANGES_REQUIRED`이고, 증거를 더 올려도 판정할 수 없어 사람이 정할 일일 때만 `HUMAN_REQUIRED`다.
+      - `verdict`는 gate의 전체 판정(통과 / 수정 필요 / 사용자 확인 필요)을 옮긴다. 통과는 `CONFIRMED`, 수정 필요는 `CHANGES_REQUIRED`, 사용자 확인 필요는 `HUMAN_REQUIRED`다. 보류의 기본은 `CHANGES_REQUIRED`이고, 증거를 더 올려도 판정할 수 없어 사용자가 정할 일일 때만 `HUMAN_REQUIRED`다.
     - 같은 묶음은 마지막 판정이 우선하고, 판정 뒤 그 범위에 증거가 늘면 해시가 달라져 판정이 무효가 된다. 판정 뒤에는 그 범위에 증거를 더하지 않는다. 더했다면 `get_work`를 다시 읽고 새 묶음을 다시 감사받는다.
-    - `CHANGES_REQUIRED`·`HUMAN_REQUIRED`이면 그 범위를 완료하지 않는다. 고친 뒤 증거를 다시 올리고 다시 감사받는다. 사람 확인은 사용자에게 보고한다.
+    - `CHANGES_REQUIRED`·`HUMAN_REQUIRED`이면 그 범위를 완료하지 않는다. 고친 뒤 증거를 다시 올리고 다시 감사받는다. 사용자 확인은 사용자에게 보고한다.
 23. 단계를 완료한다. 메인 세션으로 `complete_work_stage`를 부른다. `workId`, `stageId`, `sessionId`: 메인 세션, `evidence`: 빈 배열(새 증거를 넣으면 묶음이 바뀌어 판정이 무효가 된다), `reason` 필수, `expectedVersion`은 최신 작업 version이다. 서버가 거부하면(`COMPLETION_NOT_SATISFIED` 등) 응답을 그대로 보고하고 완료라고 하지 않는다. 단계 끝 이벤트는 3절대로 남긴다.
 24. 필수 단계가 모두 끝나고 21번의 작업 수준 묶음도 판정됐으면 작업을 완료한다. 메인 세션으로 `transition_work`를 부른다. `state`: `COMPLETED`, `attemptId`·`claimGeneration`: `get_work`의 `claims` 중 `targetKey`가 `WORK`인 살아 있는 현재 담당의 값, `reason` 필수, `expectedVersion`은 최신 작업 version이다. 서버가 거부하면 응답(미충족 기준 ID)을 그대로 보고하고 완료라고 하지 않는다.
 25. 검토 세션을 닫는다. `get_work_session`으로 검토 세션의 `version`을 다시 읽어(판정이 올린다) `end_work_session`을 부른다. 메인 세션은 5절 15번대로 닫는다. Claude Code에서 흐름 대기열을 켰다면 `<flow> stop`으로 끈다(24·25번 뒤, 남은 항목이 있으면 먼저 보낸다).
-26. `HEAVY` 작업은 22번의 판정을 기록하지 않는다. 사람이 확인한 뒤 AI 판정이 오면 다시 미검증으로 돌아가기 때문이다. 20·21번의 증거까지만 남기고 `transition_work`로 `PAUSED`·`APPROVAL`(`reason`에 웹 작업 상세의 '검토 대상' 절에서 확인이 필요하다고 쓴다)로 바꾸며, 사용자에게 그 절의 버튼으로 확인해 달라고 요청한다. 확인을 받으면 4절 13번처럼 재개하고 23·24번을 한다.
+26. `HEAVY` 작업은 22번의 판정을 기록하지 않는다. 사용자가 확인한 뒤 AI 판정이 오면 다시 미검증으로 돌아가기 때문이다. 20·21번의 증거까지만 남기고 `transition_work`로 `PAUSED`·`APPROVAL`(`reason`에 웹 작업 상세의 '검토 대상' 절에서 확인이 필요하다고 쓴다)로 바꾸며, 사용자에게 그 절의 버튼으로 확인해 달라고 요청한다. 확인을 받으면 4절 13번처럼 재개하고 23·24번을 한다.
 
 ## 오류가 나면
 
 | 오류 | 대응 |
 | --- | --- |
-| `VALIDATION_FAILED` | 입력을 고친다. 빈 `reason`과 공통 규칙의 금지 문자열이 흔한 원인이다 |
+| `VALIDATION_FAILED` | 입력을 고친다. 빈 `reason`과 공통 규칙의 금지 문자열이 흔한 원인이다. 알 수 없는 필드 `description`을 가리키면 구 서버다. 조건의 `description`만 빼고 같은 키로 다시 보내고 빼고 올렸다고 보고한다(1절 1번) |
 | `REVISION_CONFLICT` | `get_work`로 최신 `version`을 읽고 다시 보낸다 |
 | 응답을 못 받음 | 같은 인자와 같은 키로 다시 보낸다 |
 | `IDEMPOTENCY_KEY_REUSED` | 새 키를 쓴다. 직접 쓴 이벤트면 `eventId`의 번호도 바꾼다(같은 `eventId`에 다른 내용은 거부된다). 대기열 이벤트는 고치지 않고 다시 꺼낸다 |
 | `CLAIM_LOST` | `get_work`의 `claims`를 본다. 다른 세션의 살아 있는 담당이면 멈추고 보고한다. 내 담당이 만료됐을 뿐이면(단계 담당은 활동으로 갱신되지 않는다) 그 `targetKey`의 `generation`을 `expectedClaimGeneration`으로 다시 `claim_work`한다 |
 | `TARGET_MISMATCH` | 증거는 `stageId`와 시도의 단계가 같아야 하고, 판정은 묶음 값이 그대로이며 검토 세션이 독립이어야 한다(구현 시도·증거 제출이 없는 세션). 흐름 이벤트의 `stageId`가 그 작업의 단계가 아닌 경우도 같다. 직접 쓴 단계 이벤트면 `get_work`로 단계 `id`를 다시 읽는다. 대기열 이벤트면 8번대로 `unstage`로 단계 ID만 떼고 다시 보낸다 |
 | `COMPLETION_NOT_SATISFIED` | 완료 기준이 아직 충족되지 않았다. 응답의 미충족 기준 ID를 보고하고 완료라고 하지 않는다. 증거가 빠졌거나 판정이 없거나 증거가 늘어 판정이 무효가 된 경우다 |
-| `INVALID_TRANSITION` | `get_work`의 `state`와 `stopReason`을 읽고 판단한다. 사람이 멈춘 작업이거나 같은 상태로 바꾸려 한 것이면 보고한다. `PAUSED`·`INACTIVITY`면 바로 아래 행을 따른다 |
-| 작업이 `PAUSED`·`INACTIVITY` | 6시간 활동이 없어 서버가 정리한 것이고 사람 멈춤이 아니다. 시도도 끝났다. `get_work`의 `claims`에서 `targetKey`가 `WORK`인 `generation`을 읽어 2절 5번(`claim_work` `COORDINATOR`, 새 세대)으로 다시 맡고, 상태가 `PAUSED`로 남아 있으면 4절 13번처럼 `IN_PROGRESS`로 재개한다. 이후 `attemptId`·`claimGeneration`은 새 값을 쓴다 |
+| `INVALID_TRANSITION` | `get_work`의 `state`와 `stopReason`을 읽고 판단한다. 사용자가 멈춘 작업이거나 같은 상태로 바꾸려 한 것이면 보고한다. `PAUSED`·`INACTIVITY`면 바로 아래 행을 따른다 |
+| 작업이 `PAUSED`·`INACTIVITY` | 6시간 활동이 없어 서버가 정리한 것이고 사용자 멈춤이 아니다. 시도도 끝났다. `get_work`의 `claims`에서 `targetKey`가 `WORK`인 `generation`을 읽어 2절 5번(`claim_work` `COORDINATOR`, 새 세대)으로 다시 맡고, 상태가 `PAUSED`로 남아 있으면 4절 13번처럼 `IN_PROGRESS`로 재개한다. 이후 `attemptId`·`claimGeneration`은 새 값을 쓴다 |
 | `FORBIDDEN` | 연결 권한 문제다. 사용자에게 알린다 |
 
 ## 점검 목록
