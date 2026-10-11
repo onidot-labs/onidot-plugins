@@ -29,13 +29,13 @@ const splitAgent = (markdown) => {
 test('crew manifest는 Wiki와 같은 모양이며 MCP·서버 반입·완료 기록 검사를 두지 않는다', async () => {
   const source = await json('source/crew.json');
   assert.equal(source.name, 'onidot-crew');
-  assert.equal(source.version, '0.2.0');
+  assert.equal(source.version, '0.3.0');
   assert.equal(source.displayName, 'onidot crew');
   const claude = await json(`${BASE}.claude-plugin/plugin.json`);
   const codex = await json(`${BASE}.codex-plugin/plugin.json`);
   for (const manifest of [claude, codex]) {
     assert.equal(manifest.name, 'onidot-crew');
-    assert.equal(manifest.version, '0.2.0');
+    assert.equal(manifest.version, '0.3.0');
     assert.equal(manifest.skills, './skills/');
   }
   assert.equal(claude.hooks, './claude/hooks.json');
@@ -142,7 +142,7 @@ test('crew의 Claude 훅은 흐름 대기열 훅 셋뿐이고 Codex는 SessionSt
   assert.equal(codex.SessionStart[0].hooks[0].command, 'cat "${PLUGIN_ROOT}/codex/session-start.json"');
   const context = await json(`${BASE}codex/session-start.json`);
   assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.2.0'));
+  assert.ok(context.hookSpecificOutput.additionalContext.includes('0.3.0'));
   assert.ok(!context.hookSpecificOutput.additionalContext.includes('{{version}}'));
 });
 
@@ -152,9 +152,9 @@ test('두 marketplace와 catalog는 onidot과 onidot-crew를 함께 싣는다', 
   assert.deepEqual(codex.plugins.find((p) => p.name === 'onidot-crew').source, { source: 'local', path: './plugins/onidot-crew' });
   const entry = claude.plugins.find((p) => p.name === 'onidot-crew');
   assert.equal(entry.source, './plugins/onidot-crew');
-  assert.equal(entry.version, '0.2.0');
+  assert.equal(entry.version, '0.3.0');
   assert.deepEqual((await json('catalog.json')).products.find((p) => p.id === 'crew'),
-    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.2.0' });
+    { id: 'crew', name: 'onidot-crew', displayName: 'onidot crew', version: '0.3.0' });
 });
 
 // 원본 복사본에서 생성기를 돌려 잘못된 crew 정의를 생성 전에 거부하는지 본다.
@@ -286,4 +286,32 @@ test('crew 본문이 가리키는 스킬과 역할은 모두 존재하고 세션
   assert.ok(Buffer.byteLength(start) <= 3000, `세션 안내 ${Buffer.byteLength(start)} bytes`);
   const context = JSON.parse(start).hookSpecificOutput.additionalContext;
   for (const role of roles) assert.ok(context.includes(role), `세션 안내에 역할 ${role} 없음`);
+});
+
+test('work-record 스킬은 증거 기록·gate 독립 검토·완료 절차를 담고 옛 금지 문장은 없다', async () => {
+  const text = await read('source/crew/skills/work-record/SKILL.md');
+  assert.equal(text.includes('완료 처리는 아직 하지 않는다'), false);
+  assert.equal(text.includes('완료 처리는 하지 않았고'), false);
+  for (const needle of [
+    'append_work_evidence', 'GIT_COMMIT', 'record_work_verification', 'reviewBundles', 'hiddenEvidence',
+    'evidenceSetHash', 'parentSessionId', ':gate', 'verifierSessionId', 'complete_work_stage', 'COMPLETED',
+    'CONFIRMED', 'CHANGES_REQUIRED', 'HUMAN_REQUIRED', 'HEAVY', 'onidot-crew:gate', 'end_work_session',
+  ]) assert.ok(text.includes(needle), `work-record에 ${needle} 없음`);
+  // claim 뒤에는 세션 version이 올라가므로 bind 전에 get_work_session을 다시 읽는다.
+  const claim = text.indexOf('`claim_work`로 작업 전체를 맡는다');
+  const bind = text.indexOf('`bind_work_session`');
+  const reread = text.indexOf('`get_work_session`', claim);
+  assert.ok(claim > 0 && reread > claim && bind > reread, 'claim → get_work_session → bind 순서');
+  assert.ok(text.includes('REVISION_CONFLICT'));
+  // 작업 조건은 해시 없이 충족되도록 VERIFICATION 으로 계획한다.
+  assert.equal(text.includes('"requiredEvidenceKinds": ["<위와 같은 종류>"]'), false);
+  // gate 판정은 메인 세션과 분리: 검토 세션으로는 claim·증거·완료를 하지 않는다.
+  assert.ok(/검토 세션[^\n]*(claim|담당)[^\n]*(증거|완료)/.test(text));
+});
+
+test('verify 스킬과 gate 에이전트와 run 스킬이 work-record 완료 절차로 이어진다', async () => {
+  for (const file of ['source/crew/skills/verify/SKILL.md', 'source/crew/skills/run/SKILL.md', 'source/crew/agents/gate.md']) {
+    assert.ok((await read(file)).includes('work-record'), `${file}에 work-record 연결 없음`);
+  }
+  assert.ok((await read('source/crew/agents/gate.md')).includes('MCP 도구'));
 });
