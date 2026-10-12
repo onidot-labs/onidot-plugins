@@ -335,16 +335,10 @@ const hooks = {
   },
 };
 
-// 대기열 모드에서 이 훅들은 할 일이 없다.
-hooks['session-end'] = () => {};
-hooks.stop = () => {};
-
 // 런타임 모드 훅. 대기열에 적지 않고 알림도 내지 않는다(SessionStart의 명령 접두사 안내만 유지).
 // 세션·턴·서브에이전트 관측은 oni 내장 훅이 보내므로 여기서는 흐름 연결(AGENT_LINKED)만 보낸다.
 const runtimeHooks = {
   async 'session-start'(ctx) { hooks['session-start'](ctx); },
-  async 'session-end'() {},
-  async stop() {},
   async 'subagent-start'() {},
   async 'subagent-stop'() {},
   async 'post-agent'(ctx) {
@@ -570,19 +564,23 @@ const commands = {
 };
 
 // 종료 코드: 0 성공, 1 잠금 실패·예상 못 한 오류, 2 잘못된 인자, 3 상태 오류(꺼져 있음·보내지 않은 항목 있음).
-// 런타임 준비 상태. 런타임 응답을 그대로 내고 runtime: true|false를 더한다.
+// 런타임 준비 상태. 런타임 응답을 그대로 내고 runtime: true|false와 mode: 'runtime'|'queue'를 더한다.
+// mode는 준비됐고(ready) 응답의 observationHooks(oni 관측 훅이 등록된 호스트 목록)에 claude-code가 있을 때만 'runtime'이다.
+// 필드가 없거나(옛 oni) 호스트가 없으면 'queue'라서 서브에이전트 관측이 사라지지 않는다.
+const HOST = 'claude-code';
+export const readinessMode = (body) => body?.ready === true && Array.isArray(body.observationHooks) && body.observationHooks.includes(HOST) ? 'runtime' : 'queue';
 async function readiness(values) {
   const spaceId = ledgerId(values.space, '--space');
   let dirs;
-  try { dirs = oniDirs(); } catch { return out({ runtime: false, ready: false, reason: 'PATHS_INVALID' }); }
+  try { dirs = oniDirs(); } catch { return out({ runtime: false, mode: 'queue', ready: false, reason: 'PATHS_INVALID' }); }
   const ep = runtimeEndpoint(dirs);
-  if (ep.error) return out({ runtime: false, ready: false, reason: ep.error });
+  if (ep.error) return out({ runtime: false, mode: 'queue', ready: false, reason: ep.error });
   const r = await callRuntime(ep, { method: 'GET', path: `/v1/readiness?spaceId=${spaceId}`, timeoutMs: 1500 });
-  if (!r) return out({ runtime: false, ready: false, reason: 'RUNTIME_NOT_RUNNING' });
-  if (r.status !== 200) return out({ runtime: true, ready: false, reason: `HTTP_${r.status}` });
+  if (!r) return out({ runtime: false, mode: 'queue', ready: false, reason: 'RUNTIME_NOT_RUNNING' });
+  if (r.status !== 200) return out({ runtime: true, mode: 'queue', ready: false, reason: `HTTP_${r.status}` });
   let body = null;
   try { body = JSON.parse(r.body); } catch {}
-  out(body && typeof body === 'object' && !Array.isArray(body) ? { ...body, runtime: true } : { runtime: true, ready: false, reason: 'INVALID_RESPONSE' });
+  out(body && typeof body === 'object' && !Array.isArray(body) ? { ...body, runtime: true, mode: readinessMode(body) } : { runtime: true, mode: 'queue', ready: false, reason: 'INVALID_RESPONSE' });
 }
 
 async function runCommand(argv) {
@@ -600,7 +598,7 @@ async function runCommand(argv) {
       return;
     }
     if (name === 'readiness') { await readiness(values); return; }
-    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | ids | readiness | stage <start|finish> | hook <session-start|session-end|subagent-start|subagent-stop|post-agent|stop>');
+    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | ids | readiness | stage <start|finish> | hook <session-start|subagent-start|subagent-stop|post-agent>');
     const ctx = commandContext(values);
     // 이 세션의 잠금 파일을 만들 디렉터리. status는 읽기만 하므로 만들지 않는다.
     if (name !== 'status') mkdirSync(ctx.p.dir, { recursive: true, mode: 0o700 });

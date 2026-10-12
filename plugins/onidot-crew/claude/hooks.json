@@ -12,26 +12,13 @@
         ]
       }
     ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs\" hook session-end 2>/dev/null || true",
-            "timeout": 5,
-            "async": true
-          }
-        ]
-      }
-    ],
     "SubagentStart": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs\" hook subagent-start 2>/dev/null || true",
-            "timeout": 5,
-            "async": true
+            "timeout": 5
           }
         ]
       }
@@ -42,20 +29,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs\" hook subagent-stop 2>/dev/null || true",
-            "timeout": 5,
-            "async": true
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs\" hook stop 2>/dev/null || true",
-            "timeout": 5,
-            "async": true
+            "timeout": 5
           }
         ]
       }

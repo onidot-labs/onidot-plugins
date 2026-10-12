@@ -124,19 +124,17 @@ test('리더 에이전트는 모델·도구를 상속하고 settings.json이 메
   assert.equal((await readdir(new URL(`${BASE}codex/agents/`, root))).length, 17);
 });
 
-test('crew의 Claude 훅은 흐름 훅 여섯뿐이고 Codex는 SessionStart 훅 하나만 둔다', async () => {
+test('crew의 Claude 훅은 흐름 훅 셋뿐이고 Codex는 SessionStart 훅 하나만 둔다', async () => {
   // 리더 에이전트가 세션 안내를 맡으므로 Claude에는 SessionStart가 없다.
   assert.deepEqual(await readdir(new URL(`${BASE}claude/`, root)), ['hooks.json']);
-  // 기록만 하는 훅은 async, 모든 훅에 timeout(초)을 둔다.
-  const flow = (event, background = false) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true`,
-    timeout: 5, ...(background ? { async: true } : {}) }];
+  // 모든 훅에 timeout(초)을 두고 async로 두지 않는다(대기열 모드에서 SUBAGENT_FINISHED가 post-agent보다 늦게 적히면 안 된다).
+  const flow = (event) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true`, timeout: 5 }];
   assert.deepEqual(await json(`${BASE}claude/hooks.json`), { hooks: {
     // Bash 셸에는 플러그인 변수가 없으므로 세션 시작 훅이 절대경로 명령 접두사를 알린다.
     SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: flow('session-start') }],
-    SessionEnd: [{ hooks: flow('session-end', true) }],
-    SubagentStart: [{ hooks: flow('subagent-start', true) }],
-    SubagentStop: [{ hooks: flow('subagent-stop', true) }],
-    Stop: [{ hooks: flow('stop', true) }],
+    // 두 모드 모두 할 일이 없는 SessionEnd·Stop은 등록하지 않는다.
+    SubagentStart: [{ hooks: flow('subagent-start') }],
+    SubagentStop: [{ hooks: flow('subagent-stop') }],
     // 실제 Claude Code 2.1.284에서 서브에이전트 도구의 tool_name은 Agent다. 2.1.63 전 이름은 Task다.
     PostToolUse: [{ matcher: 'Agent|Task', hooks: flow('post-agent') }] } });
   assert.equal(await read(`${BASE}scripts/flow-queue.mjs`), await read('source/crew/runtime/flow-queue.mjs'));

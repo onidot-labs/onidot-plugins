@@ -170,6 +170,22 @@ test('훅이 시작·끝을 쓰고 메인에 알리며, pending은 고정된 이
   } finally { await f.cleanup(); }
 });
 
+test('대기열 모드: 서브에이전트 끝이 post-agent 알림 전에 대기열에 있다(훅은 동기로 등록된다)', async () => {
+  const f = await fixture();
+  try {
+    start(f.data);
+    hook(f.data, 'subagent-start', subagentStart('a1'));
+    hook(f.data, 'subagent-stop', subagentStop('a1'));
+    const notice = hook(f.data, 'post-agent', postAgent('a1', `구현 [stage:${STAGE}]`));
+    assert.match(JSON.parse(notice.stdout).hookSpecificOutput.additionalContext, /이벤트 2건/);
+    assert.deepEqual(pending(f.data, 0).events.map((e) => e.type), ['SUBAGENT_STARTED', 'SUBAGENT_FINISHED']);
+    // 등록 쪽: 이 순서를 보장하려면 SubagentStart·SubagentStop이 async가 아니어야 한다.
+    const hooks = JSON.parse(await readFile(join(root, 'plugins/onidot-crew/claude/hooks.json'), 'utf8')).hooks;
+    for (const ev of ['SubagentStart', 'SubagentStop', 'PostToolUse']) assert.equal(hooks[ev][0].hooks[0].async, undefined, ev);
+    assert.deepEqual(Object.keys(hooks).sort(), ['PostToolUse', 'SessionStart', 'SubagentStart', 'SubagentStop']);
+  } finally { await f.cleanup(); }
+});
+
 test('서브에이전트 안의 Agent 호출과 단계 표식 없는 호출은 메인에 알리지 않거나 단계를 비운다', async () => {
   const f = await fixture();
   try {

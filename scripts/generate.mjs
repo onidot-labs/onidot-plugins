@@ -147,15 +147,13 @@ for (const product of catalog.products) {
   }
   if (profile.flowHooks) {
     // A missing node must not surface as a hook error on every subagent; the script itself always exits 0.
-    // 기록만 하는 훅(SubagentStart·SubagentStop·Stop·SessionEnd)은 async라 작업을 기다리게 하지 않는다. 모든 훅에 timeout(초)을 둔다.
-    const flow = (event, background = false) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true`,
-      timeout: 5, ...(background ? { async: true } : {}) }];
+    // SubagentStart·SubagentStop은 동기다. 대기열 모드에서 SUBAGENT_FINISHED가 동기 post-agent보다 늦게 적히면 서브에이전트가 계속 실행 중으로 남는다.
+    // 런타임 모드에서는 이 훅들이 즉시 끝난다. 두 모드 모두 할 일이 없는 SessionEnd·Stop은 등록하지 않는다. 모든 훅에 timeout(초)을 둔다.
+    const flow = (event) => [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/scripts/flow-queue.mjs" hook ${event} 2>/dev/null || true`, timeout: 5 }];
     // Bash has no plugin variables, so SessionStart announces the absolute-path command prefix to the main thread.
     claudeHooks.SessionStart = [{ matcher: 'startup|resume|clear|compact', hooks: flow('session-start') }];
-    claudeHooks.SessionEnd = [{ hooks: flow('session-end', true) }];
-    claudeHooks.SubagentStart = [{ hooks: flow('subagent-start', true) }];
-    claudeHooks.SubagentStop = [{ hooks: flow('subagent-stop', true) }];
-    claudeHooks.Stop = [{ hooks: flow('stop', true) }];
+    claudeHooks.SubagentStart = [{ hooks: flow('subagent-start') }];
+    claudeHooks.SubagentStop = [{ hooks: flow('subagent-stop') }];
     // Agent was named Task before Claude Code 2.1.63.
     claudeHooks.PostToolUse = [{ matcher: 'Agent|Task', hooks: flow('post-agent') }];
   }

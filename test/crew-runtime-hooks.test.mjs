@@ -281,7 +281,7 @@ test('readiness: 런타임 없음·토큰 없음·준비됨·오류', async () =
     const r2 = await run(noToken, ['readiness', '--space', SPACE], { claudeData: false });
     assert.deepEqual([parse(r2).runtime, parse(r2).ready, parse(r2).reason], [false, false, 'RUNTIME_TOKEN_MISSING']);
     const r3 = await run(ok, ['readiness', '--space', SPACE], { claudeData: false });
-    assert.deepEqual(parse(r3), { ready: true, connection: 'CONNECTED', instanceId: 'i1', deviceId: 'd1', reason: '', runtime: true });
+    assert.deepEqual(parse(r3), { ready: true, connection: 'CONNECTED', instanceId: 'i1', deviceId: 'd1', reason: '', runtime: true, mode: 'queue' });
     const get = rt.requests.find((r) => r.method === 'GET');
     assert.equal(get.url, `/v1/readiness?spaceId=${SPACE}`);
     assert.equal(get.headers.authorization, `Bearer ${TOKEN}`);
@@ -290,6 +290,24 @@ test('readiness: 런타임 없음·토큰 없음·준비됨·오류', async () =
     assert.equal((await run(ok, ['readiness'], { claudeData: false })).status, 2);
     assert.equal((await run(ok, ['readiness', '--space', 'bad!'], { claudeData: false })).status, 2);
   } finally { await rt.close(); await bad.close(); for (const f of [none, noToken, ok, err]) await f.cleanup(); }
+});
+
+test('readiness: observationHooks에 claude-code가 있을 때만 mode가 runtime이다(없음·빈 목록·다른 호스트·포함)', async () => {
+  const base = { ready: true, connection: 'CONNECTED', instanceId: 'i1', deviceId: 'd1', reason: '' };
+  const cases = [['필드 없음', base, 'queue'], ['빈 목록', { ...base, observationHooks: [] }, 'queue'], ['다른 호스트만', { ...base, observationHooks: ['codex'] }, 'queue'],
+    ['포함', { ...base, observationHooks: ['codex', 'claude-code'] }, 'runtime'], ['형식 오류', { ...base, observationHooks: 'claude-code' }, 'queue'],
+    ['준비 안 됨', { ...base, ready: false, observationHooks: ['claude-code'] }, 'queue']];
+  for (const [label, readiness, mode] of cases) {
+    const rt = await fakeRuntime({ readiness }); const f = await fixture({ runtime: rt });
+    try {
+      const r = await run(f, ['readiness', '--space', SPACE], { claudeData: false });
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(JSON.parse(r.stdout).mode, mode, label);
+    } finally { await rt.close(); await f.cleanup(); }
+  }
+  // 런타임이 없으면 항상 대기열 모드다.
+  const none = await fixture({ runtime: null });
+  try { assert.equal(JSON.parse((await run(none, ['readiness', '--space', SPACE], { claudeData: false })).stdout).mode, 'queue'); } finally { await none.cleanup(); }
 });
 
 test('stage start·finish는 런타임으로 가고 없으면 inbox. 잘못된 입력은 exit 2, 대기열 모드는 exit 3', async () => {
@@ -344,7 +362,7 @@ test('stop은 런타임 모드면 FLOW_UNBOUND를 보낸다', async () => {
 test('work-record 스킬이 런타임 모드와 대기열 모드를 구분해 안내한다', async () => {
   const skill = await readFile(join(root, 'source/crew/skills/work-record/SKILL.md'), 'utf8');
   for (const needle of ['## 3-1. 런타임 모드', '<flow> readiness --space', 'HOOK_ONLY', '`deviceId`', 'MCP_ONLY', '--mode runtime',
-    '<flow> stage start --stage', '<flow> stage finish --stage', '대기열 모드', '같은 `collectionScope`·`deviceId`', '`ACTIVITY`']) assert.ok(skill.includes(needle), needle);
+    '<flow> stage start --stage', '<flow> stage finish --stage', '대기열 모드', '같은 `collectionScope`·`deviceId`', '`ACTIVITY`', '`observationHooks`', '`mode`', 'oni register']) assert.ok(skill.includes(needle), needle);
   const generated = await readFile(join(root, 'plugins/onidot-crew/skills/work-record/SKILL.md'), 'utf8');
   assert.equal(generated, skill.replaceAll('{{version}}', '0.6.0'));
 });
