@@ -24,7 +24,8 @@ test('W1-22 이름표의 옛 도구·인자·브랜드는 배포 스킬에 남�
 
 test('서버 W1-22 승인 스킬 snapshot과 업무 계약이 일치한다', async () => {
   const hash = value => createHash('sha256').update(value).digest('hex');
-  assert.equal(hash(await read('source/skills/use-onidot/SKILL.md')), 'db67849f1ac8793b9860aa565b9ee72f271a098ddd2df58af39e9fecda2becac');
+  // S1(읽기 전용 원장): 4번 안내를 작업 진행·인계는 oni 런타임(onidot-work)에 남기는 방향으로 바꾼 서버 스냅샷.
+  assert.equal(hash(await read('source/skills/use-onidot/SKILL.md')), 'eae6979733b0abf3dfeb556378dd8838a5fa4a6bf497ddeea3bbd1479556964a');
   const setup = await read('source/skills/setup-onidot/SKILL.md');
   const server = setup.slice(0, setup.indexOf('\n## 클라이언트별 수동 등록'));
   // S1(onidot-studio Wiki 0rv6m4w3zs92z): scope 안내 한 줄이 onidot:wiki:*로 바뀐 서버 스냅샷.
