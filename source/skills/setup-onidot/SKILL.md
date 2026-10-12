@@ -5,7 +5,7 @@ description: 선택한 onidot 인스턴스의 MCP 연결, OAuth, Space 승인 �
 
 # onidot 연결
 
-onidot 플러그인은 인스턴스 주소를 고정하지 않는다. 연결마다 사용자가 선택한 앱 주소 `APP_URL`, MCP 주소 `MCP_URL`, 별칭 `ALIAS`를 사용한다. 등록 이름은 `onidot-<ALIAS>`다. 별칭 `work`는 이 PC의 oni 런타임이 작업 기록용 MCP 서버 `onidot-work`로 쓰는 이름이라 연결 별칭으로 쓸 수 없다(`oni`도 거부한다). 작업 기록은 이 연결이 아니라 `onidot-work`에 한다. 특정 이름이나 개인 도메인을 필수값으로 쓰지 않는다.
+onidot 플러그인은 인스턴스 주소를 고정하지 않는다. 연결마다 사용자가 선택한 앱 주소 `APP_URL`, MCP 주소 `MCP_URL`, 별칭 `ALIAS`를 사용한다. 등록 이름은 `onidot-<ALIAS>`다. 별칭 `work`는 이 PC의 oni 런타임이 작업 기록용 MCP 서버 `onidot-work`로 쓰는 이름이라 연결 별칭으로 쓸 수 없다. 작업 기록은 이 연결이 아니라 `onidot-work`에 한다. 특정 이름이나 개인 도메인을 필수값으로 쓰지 않는다.
 
 ## 연결 절차
 

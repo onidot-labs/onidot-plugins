@@ -161,13 +161,23 @@ function writeInbox(dirs, event) {
   } catch { return false; }
 }
 // 런타임에 보내고, 안 되면 inbox에 쓴다. 'runtime' | 'inbox' | 'lost'.
-async function sendEvent(event, dirs) {
+// detail을 주면 런타임이 200으로 받고도 본문에서 거부했다고 알린 건수를 detail.rejected에 적는다.
+async function sendEvent(event, dirs, detail) {
   try {
     dirs ??= oniDirs();
     const ep = runtimeEndpoint(dirs);
     if (!ep.error) {
       const r = await callRuntime(ep, { method: 'POST', path: '/v1/hook-events', body: { events: [event] }, timeoutMs: SEND_TIMEOUT_MS });
-      if (r?.status === 200) return 'runtime';
+      if (r?.status === 200) {
+        if (detail) {
+          try {
+            const rej = JSON.parse(r.body)?.rejected;
+            const n = Array.isArray(rej) ? rej.length : rej;
+            if (Number.isInteger(n) && n > 0) detail.rejected = n;
+          } catch {}
+        }
+        return 'runtime';
+      }
     }
   } catch {}
   try { dirs ??= oniDirs(); } catch { return 'lost'; }
@@ -432,9 +442,16 @@ const commands = {
       renameSync(tmp, ctx.p.active);
       return startedAt;
     });
+    const detail = {};
     const bound = mode === 'runtime'
-      ? await sendEvent(envelope('FLOW_BOUND', ctx.sid, { data: { workId, sessionId }, flowStartedAt: startedAt })) : undefined;
-    out({ active: true, claudeSession: ctx.sid, workId, sessionId, mode, ...(bound ? { bound } : {}) });
+      ? await sendEvent(envelope('FLOW_BOUND', ctx.sid, { data: { workId, sessionId }, flowStartedAt: startedAt }), undefined, detail) : undefined;
+    // 런타임 모드를 켰는데 런타임이 관측 훅 등록을 알리지 않으면(readiness가 queue) 서브에이전트 관측이 비므로 경고한다.
+    let warning;
+    if (mode === 'runtime') {
+      const rd = await readinessBody();
+      if (rd?.runtime === true && rd.mode === 'queue') warning = '런타임이 관측 훅 등록(claude-code)을 알리지 않아 readiness가 대기열(queue) 모드입니다. oni register로 관측 훅을 등록하거나 --mode queue로 켜세요.';
+    }
+    out({ active: true, claudeSession: ctx.sid, workId, sessionId, mode, ...(bound ? { bound } : {}), ...(detail.rejected ? { rejected: detail.rejected } : {}), ...(warning ? { warning } : {}) });
   },
   // 런타임 모드의 단계 시작·끝. 증거·판정·완료는 MCP로 남기고, 단계 흐름만 런타임이 보낸다.
   async stage(values, ctx, positionals) {
@@ -445,8 +462,9 @@ const commands = {
     if (!serverText(values.summary, 1000)) throw new UsageError('--summary에 한 줄 요약(1000바이트 이하, 줄바꿈·비밀값 모양 문자열 없음)을 주세요.');
     let data;
     if (sub === 'start') {
-      if (!validRole(values.role)) throw new UsageError('--role에 맡긴 역할 이름(예: onidot-crew:worker)을 주세요.');
-      data = { role: values.role, summary: values.summary };
+      // 메인이 직접 하는 단계는 --role을 생략한다. 값이 있을 때만 검사한다.
+      if (values.role !== undefined && !validRole(values.role)) throw new UsageError('--role은 맡긴 역할 이름(예: onidot-crew:worker)이어야 합니다. 메인이 직접 하는 단계는 생략하세요.');
+      data = { ...(values.role !== undefined ? { role: values.role } : {}), summary: values.summary };
     } else {
       if (!['DONE', 'FAILED', 'BLOCKED'].includes(values.result)) throw new UsageError('--result는 DONE, FAILED, BLOCKED 중 하나여야 합니다.');
       data = { result: values.result, summary: values.summary };
@@ -465,8 +483,9 @@ const commands = {
       return run;
     });
     data.runId = runId;
-    const sent = await sendEvent(envelope(sub === 'start' ? 'STAGE_STARTED' : 'STAGE_FINISHED', ctx.sid, { stageId, data }));
-    out({ sent, stageId });
+    const detail = {};
+    const sent = await sendEvent(envelope(sub === 'start' ? 'STAGE_STARTED' : 'STAGE_FINISHED', ctx.sid, { stageId, data }), undefined, detail);
+    out({ sent, stageId, ...(detail.rejected ? { rejected: detail.rejected } : {}) });
   },
   pending(values, ctx) {
     const raw = values['next-seq'];
@@ -568,18 +587,20 @@ const commands = {
 // 필드가 없거나(옛 oni) 호스트가 없으면 'queue'라서 서브에이전트 관측이 사라지지 않는다.
 const HOST = 'claude-code';
 export const readinessMode = (body) => body?.ready === true && Array.isArray(body.observationHooks) && body.observationHooks.includes(HOST) ? 'runtime' : 'queue';
-async function readiness(values) {
+// readiness 결과 객체. 런타임이 없거나 응답이 이상해도 항상 객체를 낸다.
+async function readinessBody() {
   let dirs;
-  try { dirs = oniDirs(); } catch { return out({ runtime: false, mode: 'queue', ready: false, reason: 'PATHS_INVALID' }); }
+  try { dirs = oniDirs(); } catch { return { runtime: false, mode: 'queue', ready: false, reason: 'PATHS_INVALID' }; }
   const ep = runtimeEndpoint(dirs);
-  if (ep.error) return out({ runtime: false, mode: 'queue', ready: false, reason: ep.error });
+  if (ep.error) return { runtime: false, mode: 'queue', ready: false, reason: ep.error };
   const r = await callRuntime(ep, { method: 'GET', path: '/v1/readiness', timeoutMs: 1500 });
-  if (!r) return out({ runtime: false, mode: 'queue', ready: false, reason: 'RUNTIME_NOT_RUNNING' });
-  if (r.status !== 200) return out({ runtime: true, mode: 'queue', ready: false, reason: `HTTP_${r.status}` });
+  if (!r) return { runtime: false, mode: 'queue', ready: false, reason: 'RUNTIME_NOT_RUNNING' };
+  if (r.status !== 200) return { runtime: true, mode: 'queue', ready: false, reason: `HTTP_${r.status}` };
   let body = null;
   try { body = JSON.parse(r.body); } catch {}
-  out(body && typeof body === 'object' && !Array.isArray(body) ? { ...body, runtime: true, mode: readinessMode(body) } : { runtime: true, mode: 'queue', ready: false, reason: 'INVALID_RESPONSE' });
+  return body && typeof body === 'object' && !Array.isArray(body) ? { ...body, runtime: true, mode: readinessMode(body) } : { runtime: true, mode: 'queue', ready: false, reason: 'INVALID_RESPONSE' };
 }
+async function readiness() { out(await readinessBody()); }
 
 async function runCommand(argv) {
   try {

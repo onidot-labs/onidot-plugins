@@ -24,13 +24,13 @@ test('W1-22 이름표의 옛 도구·인자·브랜드는 배포 스킬에 남�
 
 test('서버 W1-22 승인 스킬 snapshot과 업무 계약이 일치한다', async () => {
   const hash = value => createHash('sha256').update(value).digest('hex');
-  // S1(읽기 전용 원장): 4번 안내를 작업 진행·인계는 oni 런타임(onidot-work)에 남기는 방향으로 바꾼 서버 스냅샷.
-  assert.equal(hash(await read('source/skills/use-onidot/SKILL.md')), 'eae6979733b0abf3dfeb556378dd8838a5fa4a6bf497ddeea3bbd1479556964a');
+  // S1 후속: 4번을 도구 목록 기준으로 단일화하고 작업 진행·인계는 oni 런타임(onidot-work)에 남기는 방향으로 바꾼 서버 스냅샷.
+  assert.equal(hash(await read('source/skills/use-onidot/SKILL.md')), '509238e1afd0d8ae5368ef03e7cb16f31a27c019cc07cb4aa906f2d5c31f90bb');
   const setup = await read('source/skills/setup-onidot/SKILL.md');
   const server = setup.slice(0, setup.indexOf('\n## 클라이언트별 수동 등록'));
   // S1(onidot-studio Wiki 0rv6m4w3zs92z): scope 안내 한 줄이 onidot:wiki:*로 바뀐 서버 스냅샷.
   // U6(개정 설계 6절): 첫 문단의 집·회사 예시를 걷고 별칭 work(oni 런타임의 onidot-work 예약)를 알린 서버 스냅샷.
-  assert.equal(hash(server), '6290e1c9c1b8b21f943d69790d754772931bab106d5f06d6795b4c92c8b0e120');
+  assert.equal(hash(server), '6c246d19263bd9f7a3b6b110fdcce43b0b05ca42b5a7b2bf8b241981fc31300b');
 });
 
 test('명시하지 않은 권한은 READ이며 별칭·주소·scope별로 OAuth 상태를 분리한다', () => {

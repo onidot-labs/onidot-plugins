@@ -19,7 +19,7 @@ const SPACE = '0rwm3space0aa';
 const TOKEN = 'test-runtime-token';
 
 // 가짜 런타임. 받은 요청을 모으고 status·지연을 바꿀 수 있다.
-const fakeRuntime = async ({ status = 200, delay = 0, readiness = { ready: true, connection: 'CONNECTED', instanceId: 'i1', deviceId: 'd1', reason: '' } } = {}) => {
+const fakeRuntime = async ({ status = 200, delay = 0, eventsBody = '{}', readiness = { ready: true, connection: 'CONNECTED', instanceId: 'i1', deviceId: 'd1', reason: '' } } = {}) => {
   const requests = [];
   const server = createServer((req, res) => {
     let body = '';
@@ -28,7 +28,7 @@ const fakeRuntime = async ({ status = 200, delay = 0, readiness = { ready: true,
       requests.push({ method: req.method, url: req.url, headers: req.headers, body });
       setTimeout(() => {
         res.writeHead(status, { 'content-type': 'application/json' });
-        res.end(req.url.startsWith('/v1/readiness') ? JSON.stringify(readiness) : '{}');
+        res.end(req.url.startsWith('/v1/readiness') ? JSON.stringify(readiness) : eventsBody);
       }, delay);
     });
   });
@@ -184,7 +184,7 @@ test('런타임 모드 SessionStart: 기존 안내를 출력하고 아무것도 
     const r = await hook(f, 'session-start', { session_id: SID, hook_event_name: 'SessionStart', source: 'resume' });
     assert.equal(r.status, 0);
     assert.ok(JSON.parse(r.stdout).hookSpecificOutput.additionalContext.includes('명령 접두사'));
-    assert.equal(rt.requests.length, 1, '시작 안내만 있고 SESSION_STARTED는 oni 훅이 보낸다');
+    assert.equal(rt.requests.filter((q) => q.method === 'POST').length, 1, '시작 안내만 있고 SESSION_STARTED는 oni 훅이 보낸다');
     assert.equal(events(rt).filter((e) => e.kind === 'SESSION_STARTED').length, 0);
   } finally { await rt.close(); await f.cleanup(); }
 });
@@ -453,4 +453,67 @@ test('남은 실행 정보 파일: pid가 죽었거나 다른 사용자 것이�
     await hook(f, 'post-agent', link('a2'));
     assert.equal(rt.requests.length, before + 1);
   } finally { await rt.close(); await f.cleanup(); }
+});
+
+test('stage start는 --role 없이도 되고(메인이 직접 하는 단계) 이벤트 data에서 role을 뺀다. 값이 있으면 검사한다', async () => {
+  const rt = await fakeRuntime(); const f = await fixture({ runtime: rt });
+  try {
+    assert.equal((await startRuntime(f)).status, 0);
+    const s = await cli(f, 'stage', 'start', '--stage', STAGE, '--summary', '계획 수립');
+    assert.equal(s.status, 0, s.stderr);
+    const started = events(rt).find((x) => x.kind === 'STAGE_STARTED');
+    assert.deepEqual(started.data, { summary: '계획 수립', runId: 1 });
+    assert.equal(Object.hasOwn(started.data, 'role'), false);
+    assert.equal((await cli(f, 'stage', 'start', '--stage', STAGE, '--role', 'task-runner', '--summary', 'x')).status, 2);
+  } finally { await rt.close(); await f.cleanup(); }
+});
+
+test('런타임이 200이어도 본문의 rejected가 0보다 크면 출력에 rejected 수를 싣는다', async () => {
+  const rt = await fakeRuntime({ eventsBody: JSON.stringify({ accepted: 0, rejected: 1 }) }); const f = await fixture({ runtime: rt });
+  try {
+    assert.equal((await startRuntime(f)).status, 0);
+    const s = await cli(f, 'stage', 'start', '--stage', STAGE, '--summary', 'x');
+    assert.equal(s.status, 0, s.stderr);
+    assert.deepEqual(JSON.parse(s.stdout), { sent: 'runtime', stageId: STAGE, rejected: 1 });
+  } finally { await rt.close(); await f.cleanup(); }
+  const ok = await fakeRuntime({ eventsBody: JSON.stringify({ accepted: 1, rejected: 0 }) }); const g = await fixture({ runtime: ok });
+  try {
+    assert.equal((await startRuntime(g)).status, 0);
+    const s = await cli(g, 'stage', 'start', '--stage', STAGE, '--summary', 'x');
+    assert.deepEqual(JSON.parse(s.stdout), { sent: 'runtime', stageId: STAGE });
+  } finally { await ok.close(); await g.cleanup(); }
+});
+
+test('start --mode runtime은 readiness가 queue 모드면 경고를 싣고, runtime 모드이거나 런타임이 없으면 싣지 않는다', async () => {
+  const hooks = { ready: true, connection: 'CONNECTED', instanceId: 'i1', deviceId: 'd1', reason: '', observationHooks: ['claude-code'] };
+  const queueRt = await fakeRuntime(); const a = await fixture({ runtime: queueRt });
+  const runtimeRt = await fakeRuntime({ readiness: hooks }); const b = await fixture({ runtime: runtimeRt });
+  const none = await fixture();
+  try {
+    const wa = JSON.parse((await startRuntime(a)).stdout);
+    assert.equal(wa.mode, 'runtime');
+    assert.match(wa.warning, /oni register/);
+    assert.match(wa.warning, /queue|대기열/);
+    const wb = JSON.parse((await startRuntime(b)).stdout);
+    assert.equal(Object.hasOwn(wb, 'warning'), false);
+    const wc = JSON.parse((await startRuntime(none)).stdout);
+    assert.equal(Object.hasOwn(wc, 'warning'), false);
+  } finally { await queueRt.close(); await runtimeRt.close(); await a.cleanup(); await b.cleanup(); await none.cleanup(); }
+});
+
+test('work-record 스킬: 메인 단계는 --role 생략, 0.5.x 이행, 세션 ID 거부 대응, onidot-work 도구 판별, 무시 문구', async () => {
+  const skill = await readFile(join(root, 'source/crew/skills/work-record/SKILL.md'), 'utf8');
+  for (const needle of ['메인이 직접 하는 단계는 `--role`을 생략', '0.5.x에서 Studio로 켠 대기열', 'stop --discard', 'oni work import',
+    '가져오기 전에는 이어 받지 않고', '런타임 원장에 없는 세션 ID', 'mcp__onidot-work__', '서버 이름 `onidot-work`', '다른 연결(Studio 등)의 같은 이름 도구',
+    '일부 도구는 무시·경고, 나머지는 입력 오류']) assert.ok(skill.includes(needle), needle);
+  assert.equal(skill.includes('받아도 무시되고 경고만'), false);
+});
+
+test('use-onidot·setup-onidot 스킬: 인계 도구는 목록에 있을 때만 문서 작업 인계에 쓰고, 근거 없는 예약어 문구는 없다', async () => {
+  const use = await readFile(join(root, 'source/skills/use-onidot/SKILL.md'), 'utf8');
+  for (const needle of ['`save_assistant_checkpoint`가 목록에 있으면 문서 작업 인계에만 쓴다', '작업 기록·진행은 onidot-work(oni 런타임)에 남긴다',
+    '정정한 새 checkpoint를 CAS 저장한다(`save_assistant_checkpoint`가 목록에 있을 때만)']) assert.ok(use.includes(needle), needle);
+  assert.equal(use.includes('읽기 전용 Studio는'), false);
+  const setup = await readFile(join(root, 'source/skills/setup-onidot/SKILL.md'), 'utf8');
+  assert.equal(setup.includes('`oni`도 거부한다'), false);
 });

@@ -7,12 +7,14 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 이 PC의 
 
 큰 일의 계획·진행·증거·검토·완료·멈춤·인계를 이 PC의 oni 런타임이 서비스하는 MCP 서버 `onidot-work`의 작업 기록에 남긴다(`oni register`가 호스트 설정에 등록한다). 사용자는 이 PC의 작업 화면에서 같은 기록을 본다. 이 스킬에서 '서버'는 `onidot-work`를 서비스하는 oni 런타임이다. `onidot-work`의 도구가 연결돼 있지 않으면(런타임이 없거나 등록되지 않음) 작업 기록 도구가 없는 것으로 보고 `onidot-crew:resume` 스킬의 진행 기록 방식(대화 안 체크리스트)으로 대신한다. onidot Studio(Wiki) 연결의 도구로는 작업 기록을 남기지 않는다.
 
+`onidot-work` 도구의 판별: Claude Code에서는 도구 이름이 `mcp__onidot-work__` 접두어로 시작하는 것, Codex에서는 MCP 서버 이름 `onidot-work`의 도구만 쓴다. 다른 연결(Studio 등)의 같은 이름 도구(`create_work_checklist` 등)로는 작업 기록을 쓰지 않는다. 접두어나 서버 이름으로 `onidot-work`임을 확인할 수 없으면 도구가 없는 것으로 본다.
+
 ## 공통 규칙
 
 - 작업 기록 쓰기는 메인 AI만 한다. 서브에이전트는 결과만 돌려준다. 쓰기마다 작업 버전이 올라가서 여럿이 동시에 쓰면 충돌한다.
 - 모든 쓰기 도구에 `idempotencyKey`를 준다. `spaceId`는 보내지 않는다(런타임 원장에는 Space가 없다. 보내도 무시하고 응답 `warnings`에 `IGNORED_FIELD`로 알린다). 키는 `crew:<작업 짧은 이름>:<동작>:<대상>:<번호>` 꼴로 만든다. 내용이 다른 요청에 같은 키를 쓰지 않는다.
 - 쓰기 응답의 `version`을 다음 요청의 `expectedVersion`으로 이어 쓴다.
-- `knownPolicyRevision`, `guideSnapshotId`, `deviceId`, `instanceId`도 보내지 않는다(받아도 무시되고 경고만 붙는다).
+- `knownPolicyRevision`, `guideSnapshotId`, `deviceId`, `instanceId`도 보내지 않는다(일부 도구는 무시·경고, 나머지는 입력 오류).
 - 이벤트·사유 문장에는 줄바꿈과 비밀값처럼 보이는 문자열을 넣지 않는다. 인계 본문은 줄바꿈을 써도 된다.
 - 서버는 이벤트의 `eventId`·`summary`·`role`·`agentId`에 다음이 들어 있으면 묶음 전체를 `VALIDATION_FAILED`로 거부한다(대소문자 무시): `bearer `, `authorization:`, `-----begin `, `sk-`, `ghp_`, `github_pat_`, 그리고 `api_key`·`api-key`·`password`·`access_token`·`refresh_token`·`secret` 바로 뒤의 `=`. `task-`·`risk-`·`desk-`처럼 `sk-`로 끝나는 낱말도 걸리므로 문장과 `eventId`에 쓰지 않는다.
 - 단계·작업의 완료 처리(`complete_work_stage`, `transition_work`의 `COMPLETED`)는 7절의 순서(증거 기록 → gate 독립 검토 → 완료)로만 한다. 증거나 판정 없이 부르지 않고, 서버가 거부하면 완료라고 하지 않는다.
@@ -87,9 +89,10 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 이 PC의 
 - 세션 열기: `mode`가 `runtime`이면 `start_work_session`을 `collectionScope`: `HOOK_ONLY`로 연다. 대기열 모드는 `MCP_ONLY`다. `deviceId`는 어느 쪽에서도 보내지 않는다(보내도 무시된다). 런타임은 모든 수집 범위를 이 PC의 것으로 받으므로 기기 불일치로 거부되는 일이 없다.
 - 켜기: 2절 6번을 마친 뒤 `<flow> start --work <작업 ID> --session <세션 ID> --mode runtime`을 실행한다. `--mode`를 생략하면 대기열 모드다. 대기열에 보내지 않은 항목이 남아 있으면 runtime으로 바꾸지 않고 종료 코드 3으로 거부하니, 먼저 보내고 `ack`하거나 `stop --discard`로 정리한다. 켜면 런타임에 `FLOW_BOUND`가 간다(작업 ID와 세션 ID만 싣는다).
 - gate 검토 세션(7절 22번)도 메인 세션과 같은 `collectionScope`로 연다.
-- 단계 흐름: 3절 7번의 `append_work_session_events` 대신 단계를 맡기기 직전에 `<flow> stage start --stage <단계 ID> --role <맡긴 역할> --summary <한 줄>`, 끝난 직후에 `<flow> stage finish --stage <단계 ID> --result DONE|FAILED|BLOCKED --summary <증거 한 줄>`을 실행한다. 단계 ID는 `get_work`가 돌려준 `id`다. 이벤트 모양·순번·시각은 명령과 런타임이 정하므로 `producerSeq`·`occurredAt`을 직접 만들지 않는다. 금지 문자열 규칙(공통 규칙)은 그대로 적용되고, 걸리면 종료 코드 2로 거부된다. 런타임에 닿지 않아도 명령이 이벤트를 보관함에 남기고 성공한다(출력의 `sent`가 `inbox`).
+- 단계 흐름: 3절 7번의 `append_work_session_events` 대신 단계를 맡기기 직전에 `<flow> stage start --stage <단계 ID> [--role <맡긴 역할>] --summary <한 줄>`, 끝난 직후에 `<flow> stage finish --stage <단계 ID> --result DONE|FAILED|BLOCKED --summary <증거 한 줄>`을 실행한다. 단계 ID는 `get_work`가 돌려준 `id`다. 메인이 직접 하는 단계는 `--role`을 생략한다(예: 첫 단계 `계획`. 값을 주면 역할 이름 규칙으로 검사하고, 생략하면 이벤트에서 `role`이 빠진다). 출력에 `rejected`가 있으면 런타임이 200으로 받고도 그 건수만큼 이벤트를 거부한 것이니 조용히 넘기지 말고 보고한다. 이벤트 모양·순번·시각은 명령과 런타임이 정하므로 `producerSeq`·`occurredAt`을 직접 만들지 않는다. 금지 문자열 규칙(공통 규칙)은 그대로 적용되고, 걸리면 종료 코드 2로 거부된다. 런타임에 닿지 않아도 명령이 이벤트를 보관함에 남기고 성공한다(출력의 `sent`가 `inbox`).
 - 서브에이전트 시작·끝: 3절 8번의 꺼내기·보내기·지우기(`pending`·`ack`·`unstage`)를 하지 않는다. oni 내장 훅이 런타임으로 직접 보낸다(crew 훅은 보내지 않는다). 단계를 맡기는 Agent 호출의 `description` 끝에 `[stage:<단계 ID>]`를 붙이는 규칙은 그대로다(훅이 `AGENT_LINKED`로 단계와 서브에이전트를 잇는다).
 - 계속 MCP로 하는 것: 증거 기록, gate 판정, 단계·작업 완료, 인계, 사용자 결정 대기 전이. 작업 담당을 살리는 `ACTIVITY` 이벤트(3절 7번 마지막 항목)도 `append_work_session_events`로 보낸다. 서버가 거부하면 거부 응답을 그대로 사용자에게 보고한다.
+- 이행(0.5.x → 런타임 모드): 0.5.x에서 Studio로 켠 대기열이 남아 있으면 `<flow> stop --discard`로 버린다. Studio에서 진행 중이던 작업은 `oni work import`로 런타임 원장에 가져온 뒤 이어 받고, 가져오기 전에는 이어 받지 않고 사용자에게 보고한다. `start --mode runtime`이 `warning`을 내면(readiness가 대기열 모드) `oni register`로 관측 훅을 등록하기 전까지 서브에이전트 관측이 비는 것이니 사용자에게 알린다.
 - 끄기: 인계 뒤 `<flow> stop`(5절 14·15번, 7절 25번). 런타임 모드면 `FLOW_UNBOUND`가 간다. `/clear` 뒤나 새 대화에서 이어 받으면 `readiness`부터 다시 한다.
 
 ## 4. 사용자 결정을 기다릴 때
@@ -156,6 +159,7 @@ description: 계획 단계가 3개 이상인 큰 일을 진행할 때 이 PC의 
 | --- | --- |
 | `VALIDATION_FAILED` | 입력을 고친다. 빈 `reason`과 공통 규칙의 금지 문자열이 흔한 원인이다. 입력 검사 오류는 틀린 필드 경로와 이유(`fieldErrors`)를 함께 돌려주므로 그 필드를 고친다. 런타임이 모르는 필드는 거부된다(단, `spaceId` 같은 옛 입력은 무시되고 경고만 붙는다) |
 | 배열 입력 실패(`itemIndex`·`stageId` 포함, 예: `COMPLETION_NOT_SATISFIED; itemIndex=1; stageId=B`) | 아무것도 반영되지 않았다. 오류의 `itemIndex` 항목을 고친 뒤 같은 배열을 새 `idempotencyKey`로 다시 보낸다(내용이 바뀌었으므로). 같은 배열을 그대로 재전송할 때만(응답을 못 받음) 같은 키를 쓴다 |
+| 런타임 원장에 없는 세션 ID 거부 | 세션 ID가 Studio 등 다른 곳에서 만든 값이다. 그 ID로 이어 쓰지 말고 `onidot-work`의 `start_work_session`으로 새 세션을 열거나, 옛 작업이면 `oni work import`로 가져온 뒤 `get_work_session`으로 확인한 ID를 쓴다 |
 | `REVISION_CONFLICT` | `get_work`로 최신 `version`을 읽고 다시 보낸다 |
 | 응답을 못 받음 | 같은 인자와 같은 키로 다시 보낸다 |
 | `IDEMPOTENCY_KEY_REUSED` | 새 키를 쓴다. 직접 쓴 이벤트면 `eventId`의 번호도 바꾼다(같은 `eventId`에 다른 내용은 거부된다). 대기열 이벤트는 고치지 않고 다시 꺼낸다 |
