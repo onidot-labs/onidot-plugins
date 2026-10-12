@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const script = join(root, 'source/crew/runtime/flow-queue.mjs');
-const { oniDirs, findHost } = await import(script);
+const mod = await import(script);
+const { oniDirs } = mod;
 const SID = '8cbb5482-3793-4c9d-bde6-2a408981e067';
 const WORK = '0rwm0wcpqz6mg';
 const LEDGER = '0rwm1abcdefgh';
@@ -66,6 +67,7 @@ const flowFiles = async (f) => { try { return (await readdir(join(f.data, 'flow'
 
 const subagentStart = (id, type = 'onidot-crew:worker') => ({ session_id: SID, hook_event_name: 'SubagentStart', agent_id: id, agent_type: type });
 const subagentStop = (id, type = 'onidot-crew:worker') => ({ session_id: SID, hook_event_name: 'SubagentStop', agent_id: id, agent_type: type });
+const link = (id) => postAgent(id, `단계 맡기기 [stage:${STAGE}]`);
 const postAgent = (id, description = '일 맡기기') => ({ session_id: SID, hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: { description, subagent_type: 'x' }, tool_response: { agentId: id } });
 
 test('경로 규칙: macOS·Linux 기본값과 ONI_* 덮어쓰기', () => {
@@ -78,21 +80,12 @@ test('경로 규칙: macOS·Linux 기본값과 ONI_* 덮어쓰기', () => {
   assert.equal(oniDirs({ ONI_CONFIG_DIR: '/x/c', ONI_DATA_DIR: '/x/d', ONI_STATE_DIR: '/x/s', ONI_RUNTIME_DIR: '/x/r' }, '/home/u', 'linux').runtime, '/x/r');
 });
 
-test('호스트 PID: 조상을 따라 올라가 claude를 찾고 4단계 안에 없으면 비운다', () => {
-  const table = { 100: { ppid: 90, lstart: 'Mon Oct 12 07:36:04 2026', comm: '/usr/local/bin/node' }, 90: { ppid: 80, lstart: 'Mon Oct 12 07:36:03 2026', comm: '/bin/sh' },
-    80: { ppid: 70, lstart: 'Mon Oct 12 07:05:57 2026', comm: '/Users/u/Library/Application Support/Claude/claude-code/2.1.295/abc/claude.app/Contents/MacOS/claude' }, 70: { ppid: 1, lstart: 'Mon Oct 11 15:58:26 2026', comm: '/Applications/Claude.app/Contents/MacOS/Claude' } };
-  const ps = (pid) => table[pid] ?? null;
-  const host = findHost(100, ps);
-  assert.equal(host.hostPid, 80);
-  assert.equal(host.hostStartedAt, new Date('Mon Oct 12 07:05:57 2026').toISOString());
-  assert.equal(host.hostVersion, '2.1.295');
-  // node 기반 실행: comm은 node, 인자에 claude
-  const nodeTable = { 100: { ppid: 90, lstart: 'Mon Oct 12 07:36:03 2026', comm: '/bin/sh' }, 90: { ppid: 1, lstart: 'Mon Oct 12 07:05:57 2026', comm: '/usr/bin/node', args: 'node /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js' } };
-  assert.equal(findHost(100, (p) => nodeTable[p] ?? null).hostPid, 90);
-  // 못 찾음
-  const far = { 100: { ppid: 99, lstart: "x", comm: "a" }, 99: { ppid: 98, lstart: "x", comm: "b" }, 98: { ppid: 97, lstart: "x", comm: "c" }, 97: { ppid: 96, lstart: "x", comm: "d" }, 96: { ppid: 95, lstart: "x", comm: "e" }, 95: { ppid: 1, lstart: "Mon Oct 12 07:05:57 2026", comm: "claude" } };
-  assert.deepEqual(findHost(100, (p) => far[p] ?? null), {});
-  assert.deepEqual(findHost(100, () => null), {});
+test('서브에이전트 eventId 규칙: oni 훅(cc-hook:+SHA-256 앞 32자)과 같은 입력에 같은 값', () => {
+  // oni 쪽 TranslateHostHook(internal/oni/runtime/hostin.go)과 같은 고정 값. 바꾸면 같은 사건이 두 번 적용된다.
+  const ev = (kind) => mod.envelope(kind, SID, { agentId: 'agent-7' }).eventId;
+  assert.equal(ev('SUBAGENT_STARTED'), 'cc-hook:5cc0d9ceaa0ffa7f1a110c53e1159f69');
+  assert.equal(ev('SUBAGENT_FINISHED'), 'cc-hook:ab649b37d4a314491e645c5ca1d63b5a');
+  assert.equal(mod.findHost, undefined, '호스트 PID 찾기는 oni 훅의 몫이다');
 });
 
 test('start: 모드를 정하고 FLOW_BOUND를 보낸다. 생략하면 queue이며 아무것도 보내지 않는다', async () => {
@@ -147,11 +140,10 @@ test('런타임 모드 훅은 봉투를 보내고 대기열·알림을 만들지
     results.push(await hook(f, 'session-end', { session_id: SID, hook_event_name: 'SessionEnd', reason: 'other' }));
     for (const r of results) { assert.equal(r.status, 0); assert.equal(r.stdout, ''); assert.equal(r.stderr, ''); }
     const sent = events(rt).slice(before);
-    assert.deepEqual(sent.map((e) => e.kind), ['SUBAGENT_STARTED', 'AGENT_LINKED', 'SUBAGENT_FINISHED', 'TURN_ENDED', 'SESSION_ENDED']);
+    // 관측(SESSION_*, TURN_ENDED, SUBAGENT_*)은 oni 내장 훅의 몫이다. crew 훅은 흐름 연결만 보낸다.
+    assert.deepEqual(sent.map((e) => e.kind), ['AGENT_LINKED']);
     assert.equal(sent[0].agentId, 'a1');
-    assert.equal(sent[0].agentType, 'onidot-crew:worker');
-    assert.equal(sent[1].agentId, 'a1');
-    assert.equal(sent[1].stageId, STAGE);
+    assert.equal(sent[0].stageId, STAGE);
     for (const e of sent) {
       assert.equal(e.hostSession, SID);
       assert.equal(e.host, 'claude-code');
@@ -162,15 +154,15 @@ test('런타임 모드 훅은 봉투를 보내고 대기열·알림을 만들지
     assert.deepEqual(await flowFiles(f), [`${SID}.active.json`]);
     assert.deepEqual(await inboxFiles(f), []);
     // 같은 사건을 다시 보내면 같은 eventId
-    await hook(f, 'subagent-stop', subagentStop('a1'));
-    const again = events(rt).filter((e) => e.kind === 'SUBAGENT_FINISHED');
+    await hook(f, 'post-agent', postAgent('a1', `로그인 구현 [stage:${STAGE}]`));
+    const again = events(rt).filter((e) => e.kind === 'AGENT_LINKED');
     assert.equal(again.length, 2);
     assert.equal(again[0].eventId, again[1].eventId);
-    assert.notEqual(sent[0].eventId, sent[2].eventId);
+    assert.equal(events(rt).some((e) => /^(SESSION_|TURN_|SUBAGENT_|ATTENTION)/.test(e.kind)), false);
   } finally { await rt.close(); await f.cleanup(); }
 });
 
-test('런타임 모드 SessionStart: 기존 안내를 출력하고 SESSION_STARTED를 보낸다. 활성 표시가 없으면 아무것도 보내지 않는다', async () => {
+test('런타임 모드 SessionStart: 기존 안내를 출력하고 아무것도 보내지 않는다. 활성 표시가 없으면 아무것도 보내지 않는다', async () => {
   const rt = await fakeRuntime(); const f = await fixture({ runtime: rt });
   try {
     const none = await hook(f, 'session-start', { session_id: SID, hook_event_name: 'SessionStart', source: 'startup' });
@@ -182,9 +174,8 @@ test('런타임 모드 SessionStart: 기존 안내를 출력하고 SESSION_START
     const r = await hook(f, 'session-start', { session_id: SID, hook_event_name: 'SessionStart', source: 'resume' });
     assert.equal(r.status, 0);
     assert.ok(JSON.parse(r.stdout).hookSpecificOutput.additionalContext.includes('명령 접두사'));
-    const started = events(rt).filter((e) => e.kind === 'SESSION_STARTED');
-    assert.equal(started.length, 1);
-    assert.equal(started[0].hostSession, SID);
+    assert.equal(rt.requests.length, 1, '시작 안내만 있고 SESSION_STARTED는 oni 훅이 보낸다');
+    assert.equal(events(rt).filter((e) => e.kind === 'SESSION_STARTED').length, 0);
   } finally { await rt.close(); await f.cleanup(); }
 });
 
@@ -217,8 +208,8 @@ test('런타임이 없으면 이벤트 하나당 파일 하나를 inbox에 쓰�
   const f = await fixture({ runtime: null });
   try {
     assert.equal((await startRuntime(f)).status, 0); // FLOW_BOUND도 inbox로
-    const r1 = await hook(f, 'subagent-start', subagentStart('a1'));
-    const r2 = await hook(f, 'subagent-stop', subagentStop('a1'));
+    const r1 = await hook(f, 'post-agent', link('a1'));
+    const r2 = await hook(f, 'post-agent', link('a2'));
     for (const r of [r1, r2]) { assert.equal(r.status, 0); assert.equal(r.stdout, ''); assert.equal(r.stderr, ''); }
     const names = await inboxFiles(f);
     assert.equal(names.length, 3);
@@ -228,7 +219,7 @@ test('런타임이 없으면 이벤트 하나당 파일 하나를 inbox에 쓰�
     }
     assert.equal((await stat(f.inbox)).mode & 0o777, 0o700);
     const kinds = (await inboxEvents(f)).map((e) => e.kind).sort();
-    assert.deepEqual(kinds, ['FLOW_BOUND', 'SUBAGENT_FINISHED', 'SUBAGENT_STARTED']);
+    assert.deepEqual(kinds, ['AGENT_LINKED', 'AGENT_LINKED', 'FLOW_BOUND']);
     assert.deepEqual(await flowFiles(f), [`${SID}.active.json`]);
   } finally { await f.cleanup(); }
 });
@@ -240,9 +231,9 @@ test('토큰이 없거나 401이거나 응답이 느리면 inbox로 떨어지고
   try {
     for (const f of [a, b, c]) assert.equal((await startRuntime(f)).status, 0);
     for (const f of [a, b, c]) await rm(f.inbox, { recursive: true, force: true });
-    const ra = await hook(a, 'subagent-start', subagentStart('a1'));
-    const rb = await hook(b, 'subagent-start', subagentStart('a1'));
-    const rc = await hook(c, 'subagent-start', subagentStart('a1'));
+    const ra = await hook(a, 'post-agent', link('a1'));
+    const rb = await hook(b, 'post-agent', link('a1'));
+    const rc = await hook(c, 'post-agent', link('a1'));
     for (const r of [ra, rb, rc]) { assert.equal(r.status, 0); assert.equal(r.stdout, ''); }
     assert.ok(ra.ms < 900, `느린 런타임에서도 300ms 상한 근처: ${ra.ms}`);
     for (const f of [a, b, c]) assert.equal((await inboxFiles(f)).length, 1);
@@ -251,15 +242,15 @@ test('토큰이 없거나 401이거나 응답이 느리면 inbox로 떨어지고
   } finally { await slow.close(); await denied.close(); for (const f of [a, b, c]) await f.cleanup(); }
 });
 
-test('금지 문자열이 든 agent_type은 빼고, 든 agent_id는 보내지 않는다', async () => {
+test('금지 문자열이 든 agent_id는 AGENT_LINKED로 보내지 않는다', async () => {
   const rt = await fakeRuntime(); const f = await fixture({ runtime: rt });
   try {
     assert.equal((await startRuntime(f)).status, 0);
-    await hook(f, 'subagent-start', subagentStart('a1', 'task-runner'));
-    await hook(f, 'subagent-start', subagentStart('sk-abc', 'x'));
-    const sent = events(rt).filter((e) => e.kind === 'SUBAGENT_STARTED');
+    await hook(f, 'post-agent', link('a1'));
+    await hook(f, 'post-agent', link('sk-abc'));
+    const sent = events(rt).filter((e) => e.kind === 'AGENT_LINKED');
     assert.equal(sent.length, 1);
-    assert.equal('agentType' in sent[0], false);
+    assert.equal(sent[0].agentId, 'a1');
     assert.deepEqual(await inboxFiles(f), []);
   } finally { await rt.close(); await f.cleanup(); }
 });
@@ -268,9 +259,9 @@ test('훅 한 건 처리 시간(런타임 정상 응답)을 잰다', async () =>
   const rt = await fakeRuntime(); const f = await fixture({ runtime: rt });
   try {
     assert.equal((await startRuntime(f)).status, 0);
-    await hook(f, 'subagent-start', subagentStart('warm'));
+    await hook(f, 'post-agent', link('warm'));
     const times = [];
-    for (let i = 0; i < 5; i++) times.push((await hook(f, 'subagent-start', subagentStop(`a${i}`))).ms);
+    for (let i = 0; i < 5; i++) times.push((await hook(f, 'post-agent', link(`a${i}`))).ms);
     times.sort((x, y) => x - y);
     console.log(`# 훅 1건 처리 시간 ms(프로세스 시작 포함): min ${times[0].toFixed(0)} median ${times[2].toFixed(0)} max ${times[4].toFixed(0)}`);
     assert.ok(times[2] < 300, `중앙값 ${times[2]}ms`);
@@ -417,14 +408,14 @@ test('남은 실행 정보 파일: pid가 죽었거나 다른 사용자 것이�
     const cases = [Number(dead.stdout), ...(process.getuid?.() === 0 ? [] : [1]), undefined, 0, -3, '12'];
     for (const pid of cases) {
       await info(pid);
-      assert.equal((await hook(f, 'subagent-stop', subagentStop('a1'))).status, 0);
+      assert.equal((await hook(f, 'post-agent', link('a1'))).status, 0);
       const r = await run(f, ['readiness', '--space', SPACE], { claudeData: false });
       assert.deepEqual([JSON.parse(r.stdout).runtime, JSON.parse(r.stdout).reason], [false, 'RUNTIME_NOT_RUNNING'], String(pid));
     }
     assert.equal(rt.requests.length, before, '토큰이 포트 점유자에게 가면 안 된다');
     assert.equal((await inboxFiles(f)).length, cases.length);
     await info(process.pid); // 살아 있는 내 pid는 보낸다
-    await hook(f, 'subagent-stop', subagentStop('a2'));
+    await hook(f, 'post-agent', link('a2'));
     assert.equal(rt.requests.length, before + 1);
   } finally { await rt.close(); await f.cleanup(); }
 });

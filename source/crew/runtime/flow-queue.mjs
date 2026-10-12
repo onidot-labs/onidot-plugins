@@ -3,15 +3,15 @@
 // 대기열 모드: SubagentStart·SubagentStop 훅이 서브에이전트 시작·끝을 Claude 세션별 대기열에 한 줄씩 적고,
 // 메인의 Agent 호출이 끝나면(PostToolUse) 보낼 항목이 있다고 메인에 알린다. Studio로 보내는 일은 메인이
 // work-record 스킬대로 MCP로 한다. 이 모드에서는 네트워크를 쓰지 않는다.
-// 런타임 모드: 켤 때 `--mode runtime`을 주면 훅이 관측 이벤트를 이 PC의 `oni runtime`(127.0.0.1)으로 직접 보낸다.
+// 런타임 모드: 켤 때 `--mode runtime`을 주면 흐름 이벤트(FLOW_*, STAGE_*, AGENT_LINKED)를 이 PC의 `oni runtime`(127.0.0.1)으로 직접 보낸다.
+// 세션·턴·서브에이전트·확인 기다림 같은 관측은 `oni register`가 등록하는 oni 내장 훅이 맡으므로 crew 훅은 보내지 않는다.
 // 닿지 않으면 `<oni data>/runtime/inbox/`에 이벤트당 파일 하나를 남기고, 대기열에는 적지 않는다.
 // 대기열에는 식별자·역할·단계 ID·시각만 적는다. 프롬프트·결과 본문·전사 경로는 적지 않는다.
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { connect } from 'node:net';
-import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { basename, isAbsolute, join, normalize } from 'node:path';
+import { isAbsolute, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -94,7 +94,6 @@ export function oniDirs(env = process.env, home = homedir(), platform = process.
 }
 
 const SEND_TIMEOUT_MS = 300;
-const HOST_DEPTH = 4;
 const readTrim = (path) => { try { return readFileSync(path, 'utf8').trim(); } catch { return null; } };
 function runtimeEndpoint(dirs) {
   let info = null;
@@ -178,44 +177,15 @@ async function sendEvent(event, dirs) {
 // 봉투. eventId는 보내는 쪽이 정하는 고정 값이다(같은 사건을 다시 보내면 같은 값). 해시는 16진수라 금지 문자열이 생길 수 없다.
 const eventIdFor = (...parts) => `cc-hook:${createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 32)}`;
 const KEY = {
-  SESSION_STARTED: (e) => [e.occurredAt], SESSION_ENDED: (e) => [e.occurredAt], TURN_ENDED: (e) => [e.occurredAt],
+  // SUBAGENT_*는 이제 oni 훅이 보내지만, 같은 사건이 한 번만 적용되도록 oni와 같은 규칙(cc-hook: + SHA-256("<kind>\n<세션>\n<agentId>") 앞 32자)을 유지한다.
   SUBAGENT_STARTED: (e) => [e.agentId], SUBAGENT_FINISHED: (e) => [e.agentId], AGENT_LINKED: (e) => [e.agentId, e.stageId],
   STAGE_STARTED: (e) => [e.stageId, e.data?.runId], STAGE_FINISHED: (e) => [e.stageId, e.data?.runId, e.data?.result],
   FLOW_BOUND: (e) => [e.data?.workId, e.data?.sessionId, e.flowStartedAt], FLOW_UNBOUND: (e) => [e.data?.workId, e.data?.sessionId, e.flowStartedAt],
 };
-function envelope(kind, sid, fields = {}) {
+export function envelope(kind, sid, fields = {}) {
   const { flowStartedAt, ...rest } = fields;
   const body = Object.fromEntries(Object.entries({ host: 'claude-code', hostSession: sid, kind, occurredAt: new Date().toISOString(), ...rest }).filter(([, v]) => v !== undefined));
   return { schemaVersion: 1, eventId: eventIdFor(kind, sid, ...KEY[kind]({ ...body, flowStartedAt })), ...body };
-}
-
-// Claude Code 호스트 프로세스 찾기. ps로 조상을 4단계까지 올라간다.
-function psRead(pid) {
-  const run = (cols) => spawnSync('ps', ['-o', cols, '-p', String(pid)], { encoding: 'utf8', timeout: 500, env: { ...process.env, LC_ALL: 'C' } });
-  const r = run('ppid=,lstart=,comm=');
-  const m = r.status === 0 && r.stdout.trim().match(/^(\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(.+)$/);
-  if (!m) return null;
-  const info = { ppid: Number(m[1]), lstart: m[2], comm: m[3] };
-  if (/^(node|bun)$/.test(basename(info.comm))) info.args = run('args=').stdout.trim();
-  return info;
-}
-const isClaude = (p) => { const b = basename(p.comm ?? ''); return b === 'claude' || b === 'claude.exe' || (/^(node|bun)$/.test(b) && /claude/.test(p.args ?? '')); };
-export function findHost(start = process.pid, ps = psRead) {
-  try {
-    let me = ps(start);
-    for (let i = 0; i < HOST_DEPTH; i++) {
-      if (!me || !(me.ppid > 1)) return {};
-      const parent = ps(me.ppid);
-      if (!parent) return {};
-      if (isClaude(parent)) {
-        const started = new Date(parent.lstart.replace(/\s+/g, ' '));
-        return { hostPid: me.ppid, ...(Number.isNaN(started.getTime()) ? {} : { hostStartedAt: started.toISOString() }),
-          ...(/claude-code\/(\d+\.\d+\.\d+)\//.test(parent.comm) ? { hostVersion: parent.comm.match(/claude-code\/(\d+\.\d+\.\d+)\//)[1] } : {}) };
-      }
-      me = parent;
-    }
-  } catch {}
-  return {};
 }
 
 class UsageError extends Error {}
@@ -365,28 +335,18 @@ const hooks = {
   },
 };
 
-// 대기열 모드에서 이 훅들은 할 일이 없다. 런타임 모드에서만 이벤트를 보낸다.
+// 대기열 모드에서 이 훅들은 할 일이 없다.
 hooks['session-end'] = () => {};
 hooks.stop = () => {};
 
 // 런타임 모드 훅. 대기열에 적지 않고 알림도 내지 않는다(SessionStart의 명령 접두사 안내만 유지).
-const isSubagentInput = (input) => typeof input.agent_id === 'string' && input.agent_id !== '';
+// 세션·턴·서브에이전트 관측은 oni 내장 훅이 보내므로 여기서는 흐름 연결(AGENT_LINKED)만 보낸다.
 const runtimeHooks = {
-  async 'session-start'(ctx) {
-    hooks['session-start'](ctx);
-    if (isSubagentInput(ctx.input)) return;
-    await sendEvent(envelope('SESSION_STARTED', ctx.sid, findHost()));
-  },
-  async 'session-end'(ctx) { if (!isSubagentInput(ctx.input)) await sendEvent(envelope('SESSION_ENDED', ctx.sid)); },
-  async stop(ctx) { if (!isSubagentInput(ctx.input)) await sendEvent(envelope('TURN_ENDED', ctx.sid)); },
-  async 'subagent-start'(ctx) {
-    const who = subagent(ctx.input);
-    if (who) await sendEvent(envelope('SUBAGENT_STARTED', ctx.sid, { agentId: who.agentId, agentType: who.role, ...findHost() }));
-  },
-  async 'subagent-stop'(ctx) {
-    const who = subagent(ctx.input);
-    if (who) await sendEvent(envelope('SUBAGENT_FINISHED', ctx.sid, { agentId: who.agentId, agentType: who.role }));
-  },
+  async 'session-start'(ctx) { hooks['session-start'](ctx); },
+  async 'session-end'() {},
+  async stop() {},
+  async 'subagent-start'() {},
+  async 'subagent-stop'() {},
   async 'post-agent'(ctx) {
     const { input } = ctx;
     if (input.tool_name !== 'Agent' && !(input.tool_name === 'Task' && typeof input.tool_input?.subagent_type === 'string')) return;
