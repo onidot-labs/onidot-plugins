@@ -28,7 +28,8 @@ test('서버 W1-22 승인 스킬 snapshot과 업무 계약이 일치한다', asy
   const setup = await read('source/skills/setup-onidot/SKILL.md');
   const server = setup.slice(0, setup.indexOf('\n## 클라이언트별 수동 등록'));
   // S1(onidot-studio Wiki 0rv6m4w3zs92z): scope 안내 한 줄이 onidot:wiki:*로 바뀐 서버 스냅샷.
-  assert.equal(hash(server), '5f0d6b9fad614a5d8239851252fc119f0719e8609b40afd368b1ed7d572d0fe3');
+  // U6(개정 설계 6절): 첫 문단의 집·회사 예시를 걷고 별칭 work(oni 런타임의 onidot-work 예약)를 알린 서버 스냅샷.
+  assert.equal(hash(server), '6290e1c9c1b8b21f943d69790d754772931bab106d5f06d6795b4c92c8b0e120');
 });
 
 test('명시하지 않은 권한은 READ이며 별칭·주소·scope별로 OAuth 상태를 분리한다', () => {
@@ -57,7 +58,7 @@ test('manifest·카탈로그·스킬·스크립트는 인스턴스 주소나 단
   }
   const codex = JSON.parse(await read('plugins/onidot/.codex-plugin/plugin.json'));
   assert.deepEqual(codex.mcpServers, {});
-  assert.equal(JSON.parse(await read('source/wiki.json')).version, '0.15.8');
+  assert.equal(JSON.parse(await read('source/wiki.json')).version, '0.15.9');
 });
 
 test('등록 안내는 별칭·URL·사람의 OAuth 단계와 실제 조회 검증을 제공한다', async () => {

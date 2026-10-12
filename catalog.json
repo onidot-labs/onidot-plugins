@@ -6,13 +6,13 @@
       "id": "wiki",
       "name": "onidot",
       "displayName": "onidot",
-      "version": "0.15.8"
+      "version": "0.15.9"
     },
     {
       "id": "crew",
       "name": "onidot-crew",
       "displayName": "onidot crew",
-      "version": "0.6.0"
+      "version": "0.7.0"
     }
   ]
 }

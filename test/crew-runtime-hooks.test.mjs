@@ -59,7 +59,7 @@ const run = (f, args, { input, claudeData = true } = {}) => new Promise((resolve
 });
 const hook = (f, event, input) => run(f, ['hook', event], { input });
 const cli = (f, ...args) => run(f, [...args, '--data', f.data]);
-const startRuntime = (f, extra = []) => cli(f, 'start', '--work', WORK, '--session', LEDGER, '--space', SPACE, '--mode', 'runtime', ...extra);
+const startRuntime = (f, extra = []) => cli(f, 'start', '--work', WORK, '--session', LEDGER, '--mode', 'runtime', ...extra);
 const events = (rt) => rt.requests.filter((r) => r.method === 'POST').flatMap((r) => JSON.parse(r.body).events);
 const inboxFiles = async (f) => { try { return (await readdir(f.inbox)).sort(); } catch { return []; } };
 const inboxEvents = async (f) => Promise.all((await inboxFiles(f)).map(async (n) => JSON.parse(await readFile(join(f.inbox, n), 'utf8'))));
@@ -99,10 +99,10 @@ test('start: 모드를 정하고 FLOW_BOUND를 보낸다. 생략하면 queue이�
     assert.equal(r.status, 0, r.stderr);
     const marker = JSON.parse(await readFile(join(f.data, 'flow', `${SID}.active.json`), 'utf8'));
     assert.equal(marker.mode, 'runtime');
-    assert.equal(marker.spaceId, SPACE);
+    assert.equal(Object.hasOwn(marker, 'spaceId'), false, '런타임 원장에는 Space가 없다');
     const [bound] = events(rt);
     assert.equal(bound.kind, 'FLOW_BOUND');
-    assert.deepEqual(bound.data, { spaceId: SPACE, workId: WORK, sessionId: LEDGER });
+    assert.deepEqual(bound.data, { workId: WORK, sessionId: LEDGER });
     assert.equal(bound.hostSession, SID);
     assert.equal(bound.host, 'claude-code');
     assert.equal(bound.schemaVersion, 1);
@@ -113,7 +113,7 @@ test('start: 모드를 정하고 FLOW_BOUND를 보낸다. 생략하면 queue이�
   } finally { await rt.close(); await f.cleanup(); }
 });
 
-test('start: 보내지 않은 항목이 남았으면 runtime으로 바꾸지 않고(exit 3), --space 없는 runtime은 exit 2', async () => {
+test('start: 보내지 않은 항목이 남았으면 runtime으로 바꾸지 않고(exit 3), 잘못된 --mode는 exit 2', async () => {
   const rt = await fakeRuntime(); const f = await fixture({ runtime: rt });
   try {
     assert.equal((await cli(f, 'start', '--work', WORK, '--session', LEDGER)).status, 0);
@@ -122,8 +122,18 @@ test('start: 보내지 않은 항목이 남았으면 runtime으로 바꾸지 않
     assert.equal(refused.status, 3, refused.stderr);
     assert.equal(JSON.parse(await readFile(join(f.data, 'flow', `${SID}.active.json`), 'utf8')).mode, 'queue');
     assert.equal(rt.requests.length, 0);
-    assert.equal((await cli(f, 'start', '--work', WORK, '--session', LEDGER, '--mode', 'runtime')).status, 2);
     assert.equal((await cli(f, 'start', '--work', WORK, '--session', LEDGER, '--mode', 'bogus')).status, 2);
+  } finally { await rt.close(); await f.cleanup(); }
+});
+
+test('start: --space는 옛 호출 호환으로 받되 무시하고 FLOW_BOUND에도 마커에도 싣지 않는다', async () => {
+  const rt = await fakeRuntime(); const f = await fixture({ runtime: rt });
+  try {
+    const r = await startRuntime(f, ['--space', SPACE]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(Object.hasOwn(JSON.parse(r.stdout), 'spaceId'), false);
+    assert.equal(Object.hasOwn(JSON.parse(await readFile(join(f.data, 'flow', `${SID}.active.json`), 'utf8')), 'spaceId'), false);
+    assert.deepEqual(events(rt)[0].data, { workId: WORK, sessionId: LEDGER });
   } finally { await rt.close(); await f.cleanup(); }
 });
 
@@ -274,21 +284,23 @@ test('readiness: 런타임 없음·토큰 없음·준비됨·오류', async () =
   const bad = await fakeRuntime({ status: 500 }); const err = await fixture({ runtime: bad });
   try {
     const parse = (r) => JSON.parse(r.stdout);
-    const r1 = await run(none, ['readiness', '--space', SPACE], { claudeData: false });
+    const r1 = await run(none, ['readiness'], { claudeData: false });
     assert.equal(r1.status, 0, r1.stderr);
     assert.deepEqual([parse(r1).runtime, parse(r1).ready], [false, false]);
     assert.equal(parse(r1).reason, 'RUNTIME_NOT_RUNNING');
-    const r2 = await run(noToken, ['readiness', '--space', SPACE], { claudeData: false });
+    const r2 = await run(noToken, ['readiness'], { claudeData: false });
     assert.deepEqual([parse(r2).runtime, parse(r2).ready, parse(r2).reason], [false, false, 'RUNTIME_TOKEN_MISSING']);
-    const r3 = await run(ok, ['readiness', '--space', SPACE], { claudeData: false });
+    const r3 = await run(ok, ['readiness'], { claudeData: false });
     assert.deepEqual(parse(r3), { ready: true, connection: 'CONNECTED', instanceId: 'i1', deviceId: 'd1', reason: '', runtime: true, mode: 'queue' });
     const get = rt.requests.find((r) => r.method === 'GET');
-    assert.equal(get.url, `/v1/readiness?spaceId=${SPACE}`);
+    assert.equal(get.url, '/v1/readiness', 'Space 없이 묻는다');
     assert.equal(get.headers.authorization, `Bearer ${TOKEN}`);
-    const r4 = await run(err, ['readiness', '--space', SPACE], { claudeData: false });
+    const r4 = await run(err, ['readiness'], { claudeData: false });
     assert.deepEqual([parse(r4).runtime, parse(r4).ready], [true, false]);
-    assert.equal((await run(ok, ['readiness'], { claudeData: false })).status, 2);
-    assert.equal((await run(ok, ['readiness', '--space', 'bad!'], { claudeData: false })).status, 2);
+    // 옛 호출의 --space는 받되 보내지 않는다.
+    const old = await run(ok, ['readiness', '--space', SPACE], { claudeData: false });
+    assert.equal(old.status, 0, old.stderr);
+    assert.equal(rt.requests.filter((r) => r.method === 'GET').at(-1).url, '/v1/readiness');
   } finally { await rt.close(); await bad.close(); for (const f of [none, noToken, ok, err]) await f.cleanup(); }
 });
 
@@ -300,14 +312,14 @@ test('readiness: observationHooks에 claude-code가 있을 때만 mode가 runtim
   for (const [label, readiness, mode] of cases) {
     const rt = await fakeRuntime({ readiness }); const f = await fixture({ runtime: rt });
     try {
-      const r = await run(f, ['readiness', '--space', SPACE], { claudeData: false });
+      const r = await run(f, ['readiness'], { claudeData: false });
       assert.equal(r.status, 0, r.stderr);
       assert.equal(JSON.parse(r.stdout).mode, mode, label);
     } finally { await rt.close(); await f.cleanup(); }
   }
   // 런타임이 없으면 항상 대기열 모드다.
   const none = await fixture({ runtime: null });
-  try { assert.equal(JSON.parse((await run(none, ['readiness', '--space', SPACE], { claudeData: false })).stdout).mode, 'queue'); } finally { await none.cleanup(); }
+  try { assert.equal(JSON.parse((await run(none, ['readiness'], { claudeData: false })).stdout).mode, 'queue'); } finally { await none.cleanup(); }
 });
 
 test('stage start·finish는 런타임으로 가고 없으면 inbox. 잘못된 입력은 exit 2, 대기열 모드는 exit 3', async () => {
@@ -361,10 +373,15 @@ test('stop은 런타임 모드면 FLOW_UNBOUND를 보낸다', async () => {
 
 test('work-record 스킬이 런타임 모드와 대기열 모드를 구분해 안내한다', async () => {
   const skill = await readFile(join(root, 'source/crew/skills/work-record/SKILL.md'), 'utf8');
-  for (const needle of ['## 3-1. 런타임 모드', '<flow> readiness --space', 'HOOK_ONLY', '`deviceId`', 'MCP_ONLY', '--mode runtime',
-    '<flow> stage start --stage', '<flow> stage finish --stage', '대기열 모드', '같은 `collectionScope`·`deviceId`', '`ACTIVITY`', '`observationHooks`', '`mode`', 'oni register']) assert.ok(skill.includes(needle), needle);
+  for (const needle of ['## 3-1. 런타임 모드', '<flow> readiness', 'HOOK_ONLY', 'MCP_ONLY', '--mode runtime',
+    '<flow> stage start --stage', '<flow> stage finish --stage', '대기열 모드', '같은 `collectionScope`로 연다', '`ACTIVITY`', '`observationHooks`', '`mode`', 'oni register']) assert.ok(skill.includes(needle), needle);
+  // 런타임 원장에는 Space도 기기 입력도 없다.
+  assert.equal(skill.includes('readiness --space'), false);
+  assert.equal(skill.includes('--space <spaceId>'), false);
+  assert.ok(/`mode`가 `runtime`이면 `start_work_session`을 `collectionScope`: `HOOK_ONLY`로 연다/.test(skill));
+  assert.ok(/대기열 모드는 `MCP_ONLY`/.test(skill));
   const generated = await readFile(join(root, 'plugins/onidot-crew/skills/work-record/SKILL.md'), 'utf8');
-  assert.equal(generated, skill.replaceAll('{{version}}', '0.6.0'));
+  assert.equal(generated, skill.replaceAll('{{version}}', '0.7.0'));
 });
 
 test('같은 단계의 재실행은 새 runId·eventId를 받고, 명령 재시도는 같은 값을 받는다', async () => {
@@ -427,7 +444,7 @@ test('남은 실행 정보 파일: pid가 죽었거나 다른 사용자 것이�
     for (const pid of cases) {
       await info(pid);
       assert.equal((await hook(f, 'post-agent', link('a1'))).status, 0);
-      const r = await run(f, ['readiness', '--space', SPACE], { claudeData: false });
+      const r = await run(f, ['readiness'], { claudeData: false });
       assert.deepEqual([JSON.parse(r.stdout).runtime, JSON.parse(r.stdout).reason], [false, 'RUNTIME_NOT_RUNNING'], String(pid));
     }
     assert.equal(rt.requests.length, before, '토큰이 포트 점유자에게 가면 안 된다');

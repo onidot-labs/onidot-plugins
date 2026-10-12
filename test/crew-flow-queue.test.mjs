@@ -534,19 +534,16 @@ test('newTsids는 난수 부분이 넘치면 다음 밀리초로 올리고 겹�
   const ms = now - 1577836800000;
   assert.deepEqual(parts, [[ms, 0x3ffffe], [ms, 0x3fffff], [ms + 1, 0], [ms + 1, 1]]);
 });
-// Codex처럼 플러그인 경로를 모르는 호스트가 쓰는 work-record의 한 줄 발급 명령도 서버 형식이어야 한다.
-test('work-record 스킬의 한 줄 단계 ID 발급 명령은 서버 형식의 겹치지 않는 ID를 낸다', async () => {
+// 단계 선행은 onidot-work의 ref로 건다. 스킬은 단계 ID 발급(TSID 한 줄·ids)을 더 안내하지 않고, ids 명령은 호환용으로만 남는다.
+test('work-record 스킬은 단계 ID를 직접 발급하라고 안내하지 않고 ref로 선행을 건다(ids 명령은 호환용으로 남는다)', async () => {
   const skill = await readFile(join(root, 'source/crew/skills/work-record/SKILL.md'), 'utf8');
-  const line = skill.split('\n').map((l) => l.trim()).find((l) => l.startsWith("node -e '"));
-  assert.ok(line, '한 줄 명령을 찾지 못했다');
-  const r = spawnSync('/bin/sh', ['-c', line.replace(/ 5$/, ' 30')], { encoding: 'utf8', env: { PATH: process.env.PATH } });
-  assert.equal(r.status, 0, r.stderr);
-  const ids = r.stdout.trim().split(' ');
-  assert.equal(ids.length, 30);
-  assert.equal(new Set(ids).size, 30);
-  for (const id of ids) {
-    assert.ok(isTsid(id), id);
-    const ms = Number(decodeTsid(id) >> 22n) + 1577836800000;
-    assert.ok(Math.abs(ms - Date.now()) < 60_000, id);
-  }
+  assert.equal(skill.includes("node -e '"), false, 'TSID 발급 한 줄 명령이 남아 있다');
+  assert.equal(skill.includes('ids --count'), false);
+  assert.equal(skill.includes('TSID'), false);
+  assert.ok(/단계마다 `ref`[^\n]*`predecessorStageIds`/.test(skill), 'ref로 선행을 건다');
+  assert.ok(skill.includes('직접 만들거나 발급받지 않는다'));
+  const r = spawnSync(process.execPath, [script, 'ids', '--count', '2'], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(r.status, 0, '옛 호출 호환');
+  const session = await readFile(join(root, 'source/crew/runtime/flow-queue.mjs'), 'utf8');
+  assert.ok(!/<명령>은 [^`\n]*\bids\b/.test(session), '세션 시작 안내에서 ids를 알리지 않는다');
 });

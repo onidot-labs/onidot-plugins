@@ -282,7 +282,7 @@ const hooks = {
     // 서브에이전트 세션에는 알리지 않는다. 작업 기록 쓰기는 메인만 한다.
     if (typeof ctx.input.agent_id === 'string' && ctx.input.agent_id) return;
     const prefix = `node ${shellQuote(SCRIPT)} <명령> --data ${shellQuote(ctx.data)} --claude-session ${shellQuote(ctx.sid)}`;
-    const context = `onidot crew 흐름 명령 접두사(work-record 스킬 3절 8번의 <flow>): ${prefix}\n<명령>은 start|pending|ack|unstage|status|stop|ids|readiness|stage 중 하나입니다.`;
+    const context = `onidot crew 흐름 명령 접두사(work-record 스킬 3절 8번의 <flow>): ${prefix}\n<명령>은 start|pending|ack|unstage|status|stop|readiness|stage 중 하나입니다.`;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } }));
   },
   'subagent-start'(ctx) {
@@ -413,8 +413,7 @@ const commands = {
     const workId = ledgerId(values.work, '--work'), sessionId = ledgerId(values.session, '--session');
     const mode = values.mode ?? 'queue';
     if (mode !== 'queue' && mode !== 'runtime') throw new UsageError('--mode는 queue 또는 runtime이어야 합니다.');
-    const spaceId = values.space === undefined ? undefined : ledgerId(values.space, '--space');
-    if (mode === 'runtime' && !spaceId) throw new UsageError('--mode runtime에는 --space(Space ID)가 필요합니다.');
+    // --space는 옛 호출 호환으로 받기만 한다. 런타임 원장에는 Space가 없다.
     cleanup(ctx.p.dir, ctx.sid);
     const startedAt = withLock(ctx.p, () => {
       const marker = activeMarker(ctx.p);
@@ -428,14 +427,14 @@ const commands = {
       const startedAt = same && typeof marker.startedAt === 'string' ? marker.startedAt : new Date().toISOString();
       // 임시 파일에 쓴 뒤 rename해 읽는 쪽이 반쯤 쓴 활성 표시를 보지 않게 한다.
       const tmp = `${ctx.p.active}.${process.pid}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ workId, sessionId, startedAt, mode, ...(spaceId ? { spaceId } : {}),
+      writeFileSync(tmp, JSON.stringify({ workId, sessionId, startedAt, mode,
         ...(same && marker.stages && typeof marker.stages === 'object' ? { stages: marker.stages } : {}) }) + '\n', { mode: 0o600 });
       renameSync(tmp, ctx.p.active);
       return startedAt;
     });
     const bound = mode === 'runtime'
-      ? await sendEvent(envelope('FLOW_BOUND', ctx.sid, { data: { spaceId, workId, sessionId }, flowStartedAt: startedAt })) : undefined;
-    out({ active: true, claudeSession: ctx.sid, workId, sessionId, mode, ...(spaceId ? { spaceId } : {}), ...(bound ? { bound } : {}) });
+      ? await sendEvent(envelope('FLOW_BOUND', ctx.sid, { data: { workId, sessionId }, flowStartedAt: startedAt })) : undefined;
+    out({ active: true, claudeSession: ctx.sid, workId, sessionId, mode, ...(bound ? { bound } : {}) });
   },
   // 런타임 모드의 단계 시작·끝. 증거·판정·완료는 MCP로 남기고, 단계 흐름만 런타임이 보낸다.
   async stage(values, ctx, positionals) {
@@ -570,12 +569,11 @@ const commands = {
 const HOST = 'claude-code';
 export const readinessMode = (body) => body?.ready === true && Array.isArray(body.observationHooks) && body.observationHooks.includes(HOST) ? 'runtime' : 'queue';
 async function readiness(values) {
-  const spaceId = ledgerId(values.space, '--space');
   let dirs;
   try { dirs = oniDirs(); } catch { return out({ runtime: false, mode: 'queue', ready: false, reason: 'PATHS_INVALID' }); }
   const ep = runtimeEndpoint(dirs);
   if (ep.error) return out({ runtime: false, mode: 'queue', ready: false, reason: ep.error });
-  const r = await callRuntime(ep, { method: 'GET', path: `/v1/readiness?spaceId=${spaceId}`, timeoutMs: 1500 });
+  const r = await callRuntime(ep, { method: 'GET', path: '/v1/readiness', timeoutMs: 1500 });
   if (!r) return out({ runtime: false, mode: 'queue', ready: false, reason: 'RUNTIME_NOT_RUNNING' });
   if (r.status !== 200) return out({ runtime: true, mode: 'queue', ready: false, reason: `HTTP_${r.status}` });
   let body = null;
@@ -590,7 +588,8 @@ async function runCommand(argv) {
       'next-seq': { type: 'string' }, stage: { type: 'string' }, discard: { type: 'boolean' }, count: { type: 'string' },
       space: { type: 'string' }, mode: { type: 'string' }, role: { type: 'string' }, summary: { type: 'string' }, result: { type: 'string' } } });
     const [name, ...rest] = positionals;
-    // ids는 대기열과 무관하게 작업 기록 단계 ID만 발급하므로 세션·데이터 경로가 없어도 된다.
+    // ids(옛 단계 ID 발급)는 호환용으로만 남긴다. 단계 선행은 onidot-work의 ref로 걸므로 스킬은 이 명령을 안내하지 않는다.
+    // 대기열과 무관하게 ID만 발급하므로 세션·데이터 경로가 없어도 된다.
     if (name === 'ids') {
       const raw = values.count ?? '1';
       if (!/^\d{1,3}$/.test(raw) || Number(raw) < 1 || Number(raw) > 200) throw new UsageError('--count에 1~200 사이 개수를 주세요.');
@@ -598,7 +597,7 @@ async function runCommand(argv) {
       return;
     }
     if (name === 'readiness') { await readiness(values); return; }
-    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | ids | readiness | stage <start|finish> | hook <session-start|subagent-start|subagent-stop|post-agent>');
+    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | readiness | stage <start|finish> | hook <session-start|subagent-start|subagent-stop|post-agent>');
     const ctx = commandContext(values);
     // 이 세션의 잠금 파일을 만들 디렉터리. status는 읽기만 하므로 만들지 않는다.
     if (name !== 'status') mkdirSync(ctx.p.dir, { recursive: true, mode: 0o700 });
