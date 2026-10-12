@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -379,5 +379,52 @@ test('같은 단계의 재실행은 새 runId·eventId를 받고, 명령 재시�
     // finish만 오면(시작 기록 없음) 1회차로 본다
     await cli(f, 'stage', 'finish', '--stage', '0rwm2stage0cc', '--result', 'DONE', '--summary', 'x');
     assert.equal(events(rt).at(-1).data.runId, 1);
+  } finally { await rt.close(); await f.cleanup(); }
+});
+
+// Go onipaths.ResolvePaths와 같은 결과를 내는지 표로 고정한다(빈 문자열은 없는 것으로 본다).
+test('경로 표: Go ResolvePaths와 모든 조합에서 같은 경로가 나온다', () => {
+  const H = '/home/u';
+  const table = [
+    ['linux', {}, { config: '/home/u/.config/onidot', data: '/home/u/.local/share/onidot', state: '/home/u/.local/state/onidot', runtime: '/home/u/.local/state/onidot/runtime' }],
+    ['linux', { ONI_STATE_DIR: '/o/s' }, { config: '/home/u/.config/onidot', data: '/home/u/.local/share/onidot', state: '/o/s', runtime: '/o/s/runtime' }],
+    ['linux', { XDG_STATE_HOME: '/x/s' }, { config: '/home/u/.config/onidot', data: '/home/u/.local/share/onidot', state: '/x/s/onidot', runtime: '/x/s/onidot/runtime' }],
+    ['linux', { XDG_RUNTIME_DIR: '/run/u' }, { config: '/home/u/.config/onidot', data: '/home/u/.local/share/onidot', state: '/home/u/.local/state/onidot', runtime: '/run/u/onidot' }],
+    ['linux', { XDG_RUNTIME_DIR: '/run/u', ONI_STATE_DIR: '/o/s' }, { config: '/home/u/.config/onidot', data: '/home/u/.local/share/onidot', state: '/o/s', runtime: '/run/u/onidot' }],
+    ['linux', { XDG_RUNTIME_DIR: '/run/u', ONI_RUNTIME_DIR: '/o/r' }, { config: '/home/u/.config/onidot', data: '/home/u/.local/share/onidot', state: '/home/u/.local/state/onidot', runtime: '/o/r' }],
+    ['linux', { ONI_STATE_DIR: '/o/s', ONI_RUNTIME_DIR: '/o/r' }, { config: '/home/u/.config/onidot', data: '/home/u/.local/share/onidot', state: '/o/s', runtime: '/o/r' }],
+    ['linux', { XDG_STATE_HOME: '/x/s', ONI_STATE_DIR: '/o/s', XDG_CONFIG_HOME: '/x/c', ONI_DATA_DIR: '/o/d', XDG_DATA_HOME: '/x/d' }, { config: '/x/c/onidot', data: '/o/d', state: '/o/s', runtime: '/o/s/runtime' }],
+    ['linux', { XDG_RUNTIME_DIR: '', ONI_STATE_DIR: '', XDG_STATE_HOME: '' }, { config: '/home/u/.config/onidot', data: '/home/u/.local/share/onidot', state: '/home/u/.local/state/onidot', runtime: '/home/u/.local/state/onidot/runtime' }],
+    ['linux', { ONI_STATE_DIR: '/o//s/../s/' }, { config: '/home/u/.config/onidot', data: '/home/u/.local/share/onidot', state: '/o/s', runtime: '/o/s/runtime' }],
+    ['darwin', {}, { config: '/home/u/Library/Application Support/onidot/config', data: '/home/u/Library/Application Support/onidot/data', state: '/home/u/Library/Application Support/onidot/state', runtime: '/home/u/Library/Application Support/onidot/runtime' }],
+    ['darwin', { XDG_RUNTIME_DIR: '/run/u', XDG_STATE_HOME: '/x/s' }, { config: '/home/u/Library/Application Support/onidot/config', data: '/home/u/Library/Application Support/onidot/data', state: '/home/u/Library/Application Support/onidot/state', runtime: '/home/u/Library/Application Support/onidot/runtime' }],
+    ['darwin', { ONI_STATE_DIR: '/o/s' }, { config: '/home/u/Library/Application Support/onidot/config', data: '/home/u/Library/Application Support/onidot/data', state: '/o/s', runtime: '/home/u/Library/Application Support/onidot/runtime' }],
+    ['darwin', { ONI_CONFIG_DIR: '/o/c', ONI_RUNTIME_DIR: '/o/r', ONI_DATA_DIR: '/o/d' }, { config: '/o/c', data: '/o/d', state: '/home/u/Library/Application Support/onidot/state', runtime: '/o/r' }],
+  ];
+  for (const [os, env, want] of table) assert.deepEqual(oniDirs(env, H, os), want, `${os} ${JSON.stringify(env)}`);
+  // Go는 상대경로·루트 덮어쓰기를 오류로 거부한다. 같은 입력이면 경로를 만들지 않는다(던진다).
+  for (const env of [{ ONI_STATE_DIR: 'rel' }, { ONI_DATA_DIR: '/' }, { XDG_STATE_HOME: 'rel' }]) assert.throws(() => oniDirs(env, H, 'linux'), /절대경로/, JSON.stringify(env));
+});
+
+test('남은 실행 정보 파일: pid가 죽었거나 다른 사용자 것이면 토큰을 보내지 않고 inbox로 간다', async () => {
+  const rt = await fakeRuntime(); const f = await fixture({ runtime: rt });
+  try {
+    assert.equal((await startRuntime(f)).status, 0);
+    const before = rt.requests.length;
+    const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
+    const info = (pid) => writeFile(join(f.oniRuntime, 'oni-runtime.json'), JSON.stringify({ port: rt.port, pid, startedAt: new Date().toISOString(), version: '0' }));
+    // 죽은 pid(ESRCH), 다른 사용자 소유 pid(1번은 EPERM; root로 돌면 건너뜀), pid 없음·잘못된 값
+    const cases = [Number(dead.stdout), ...(process.getuid?.() === 0 ? [] : [1]), undefined, 0, -3, '12'];
+    for (const pid of cases) {
+      await info(pid);
+      assert.equal((await hook(f, 'subagent-stop', subagentStop('a1'))).status, 0);
+      const r = await run(f, ['readiness', '--space', SPACE], { claudeData: false });
+      assert.deepEqual([JSON.parse(r.stdout).runtime, JSON.parse(r.stdout).reason], [false, 'RUNTIME_NOT_RUNNING'], String(pid));
+    }
+    assert.equal(rt.requests.length, before, '토큰이 포트 점유자에게 가면 안 된다');
+    assert.equal((await inboxFiles(f)).length, cases.length);
+    await info(process.pid); // 살아 있는 내 pid는 보낸다
+    await hook(f, 'subagent-stop', subagentStop('a2'));
+    assert.equal(rt.requests.length, before + 1);
   } finally { await rt.close(); await f.cleanup(); }
 });

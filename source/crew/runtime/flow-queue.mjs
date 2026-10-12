@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { connect } from 'node:net';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { basename, isAbsolute, join } from 'node:path';
+import { basename, isAbsolute, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -66,21 +66,31 @@ export const newId = () => `${Date.now().toString(16)}.${randomBytes(6).toString
 export const eventIdOf = (id) => `cc-flow:${id}`;
 
 // ---- oni 런타임 연결 ----
-// 경로 규칙은 `oni`와 같다. ONI_*_DIR 환경 변수가 우선한다.
+// 경로 규칙은 onidot-studio internal/onipaths ResolvePaths와 같다(빈 문자열은 없는 것, 상대경로·루트는 오류).
+// macOS는 모두 Application Support/onidot 아래. Linux는 XDG, runtime은 XDG_RUNTIME_DIR/onidot이고 없으면 최종 state/runtime이다.
+// ONI_*_DIR가 마지막에 덮어쓴다. 잘못된 경로면 던진다.
 export function oniDirs(env = process.env, home = homedir(), platform = process.platform) {
-  const abs = (v) => (typeof v === 'string' && isAbsolute(v) ? v : null);
-  let config, data, state, runtime;
+  const e = (k) => (typeof env[k] === 'string' ? env[k] : '');
+  let realHome = home;
+  try { realHome = realpathSync(home); } catch {}
+  let p;
   if (platform === 'darwin') {
-    const base = join(home, 'Library', 'Application Support', 'onidot');
-    [config, data, state, runtime] = ['config', 'data', 'state', 'runtime'].map((n) => join(base, n));
+    const base = join(realHome, 'Library', 'Application Support', 'onidot');
+    p = { config: join(base, 'config'), data: join(base, 'data'), state: join(base, 'state'), runtime: join(base, 'runtime') };
   } else {
-    config = join(abs(env.XDG_CONFIG_HOME) ?? join(home, '.config'), 'onidot');
-    data = join(abs(env.XDG_DATA_HOME) ?? join(home, '.local', 'share'), 'onidot');
-    state = join(abs(env.XDG_STATE_HOME) ?? join(home, '.local', 'state'), 'onidot');
-    runtime = abs(env.XDG_RUNTIME_DIR) ? join(env.XDG_RUNTIME_DIR, 'onidot') : join(state, 'runtime');
+    const xdg = (key, fallback) => join(e(key) || fallback, 'onidot');
+    p = { config: xdg('XDG_CONFIG_HOME', join(realHome, '.config')), data: xdg('XDG_DATA_HOME', join(realHome, '.local', 'share')),
+      state: xdg('XDG_STATE_HOME', join(realHome, '.local', 'state')) };
+    p.runtime = e('XDG_RUNTIME_DIR') ? join(e('XDG_RUNTIME_DIR'), 'onidot') : '';
   }
-  return { config: abs(env.ONI_CONFIG_DIR) ?? config, data: abs(env.ONI_DATA_DIR) ?? data,
-    state: abs(env.ONI_STATE_DIR) ?? state, runtime: abs(env.ONI_RUNTIME_DIR) ?? runtime };
+  for (const [key, name] of [['config', 'ONI_CONFIG_DIR'], ['data', 'ONI_DATA_DIR'], ['state', 'ONI_STATE_DIR'], ['runtime', 'ONI_RUNTIME_DIR']])
+    if (e(name)) p[key] = e(name);
+  if (!p.runtime) p.runtime = join(p.state, 'runtime');
+  for (const key of Object.keys(p)) {
+    if (!isAbsolute(p[key]) || normalize(p[key]) === '/') throw new Error('사용자 디렉터리는 루트가 아닌 절대경로여야 합니다');
+    p[key] = normalize(p[key]).replace(/(.)\/$/, '$1');
+  }
+  return p;
 }
 
 const SEND_TIMEOUT_MS = 300;
@@ -91,6 +101,11 @@ function runtimeEndpoint(dirs) {
   try { info = JSON.parse(readFileSync(join(dirs.runtime, 'oni-runtime.json'), 'utf8')); } catch {}
   const port = info?.port;
   if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: 'RUNTIME_NOT_RUNNING' };
+  // 런타임이 SIGKILL로 죽어 실행 정보만 남았을 때 다른 사용자가 그 포트를 잡고 있을 수 있다.
+  // pid가 살아 있고 내 소유일 때만 토큰을 보낸다(죽었으면 ESRCH, 다른 사용자면 EPERM).
+  const pid = info?.pid;
+  if (!Number.isInteger(pid) || pid < 1) return { error: 'RUNTIME_NOT_RUNNING' };
+  try { process.kill(pid, 0); } catch { return { error: 'RUNTIME_NOT_RUNNING' }; }
   const token = readTrim(join(dirs.config, 'runtime-token'));
   return token ? { port, token } : { error: 'RUNTIME_TOKEN_MISSING' };
 }
@@ -147,14 +162,16 @@ function writeInbox(dirs, event) {
   } catch { return false; }
 }
 // 런타임에 보내고, 안 되면 inbox에 쓴다. 'runtime' | 'inbox' | 'lost'.
-async function sendEvent(event, dirs = oniDirs()) {
+async function sendEvent(event, dirs) {
   try {
+    dirs ??= oniDirs();
     const ep = runtimeEndpoint(dirs);
     if (!ep.error) {
       const r = await callRuntime(ep, { method: 'POST', path: '/v1/hook-events', body: { events: [event] }, timeoutMs: SEND_TIMEOUT_MS });
       if (r?.status === 200) return 'runtime';
     }
   } catch {}
+  try { dirs ??= oniDirs(); } catch { return 'lost'; }
   return writeInbox(dirs, event) ? 'inbox' : 'lost';
 }
 
@@ -596,7 +613,9 @@ const commands = {
 // 런타임 준비 상태. 런타임 응답을 그대로 내고 runtime: true|false를 더한다.
 async function readiness(values) {
   const spaceId = ledgerId(values.space, '--space');
-  const ep = runtimeEndpoint(oniDirs());
+  let dirs;
+  try { dirs = oniDirs(); } catch { return out({ runtime: false, ready: false, reason: 'PATHS_INVALID' }); }
+  const ep = runtimeEndpoint(dirs);
   if (ep.error) return out({ runtime: false, ready: false, reason: ep.error });
   const r = await callRuntime(ep, { method: 'GET', path: `/v1/readiness?spaceId=${spaceId}`, timeoutMs: 1500 });
   if (!r) return out({ runtime: false, ready: false, reason: 'RUNTIME_NOT_RUNNING' });
