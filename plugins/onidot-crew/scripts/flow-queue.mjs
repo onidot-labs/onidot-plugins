@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 // onidot crew 작업 흐름 대기열(Claude Code 전용).
-// SubagentStart·SubagentStop 훅이 서브에이전트 시작·끝을 Claude 세션별 대기열에 한 줄씩 적고,
-// 메인의 Agent 호출이 끝나면(PostToolUse) 보낼 항목이 있다고 메인에 알린다.
-// Studio로 보내는 일은 메인이 work-record 스킬대로 MCP로 한다. 이 스크립트는 네트워크를 쓰지 않는다.
+// 대기열 모드: SubagentStart·SubagentStop 훅이 서브에이전트 시작·끝을 Claude 세션별 대기열에 한 줄씩 적고,
+// 메인의 Agent 호출이 끝나면(PostToolUse) 보낼 항목이 있다고 메인에 알린다. Studio로 보내는 일은 메인이
+// work-record 스킬대로 MCP로 한다. 이 모드에서는 네트워크를 쓰지 않는다.
+// 런타임 모드: 켤 때 `--mode runtime`을 주면 흐름 이벤트(FLOW_*, STAGE_*, AGENT_LINKED)를 이 PC의 `oni runtime`(127.0.0.1)으로 직접 보낸다.
+// 세션·턴·서브에이전트·확인 기다림 같은 관측은 `oni register`가 등록하는 oni 내장 훅이 맡으므로 crew 훅은 보내지 않는다.
+// 닿지 않으면 `<oni data>/runtime/inbox/`에 이벤트당 파일 하나를 남기고, 대기열에는 적지 않는다.
 // 대기열에는 식별자·역할·단계 ID·시각만 적는다. 프롬프트·결과 본문·전사 경로는 적지 않는다.
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
-import { isAbsolute, join } from 'node:path';
+import { connect } from 'node:net';
+import { homedir } from 'node:os';
+import { isAbsolute, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -59,6 +64,139 @@ export function newTsids(count, now = Date.now(), seed = randomBytes(3).readUInt
 }
 export const newId = () => `${Date.now().toString(16)}.${randomBytes(6).toString('hex')}`;
 export const eventIdOf = (id) => `cc-flow:${id}`;
+
+// ---- oni 런타임 연결 ----
+// 경로 규칙은 onidot-studio internal/onipaths ResolvePaths와 같다(빈 문자열은 없는 것, 상대경로·루트는 오류).
+// macOS는 모두 Application Support/onidot 아래. Linux는 XDG, runtime은 XDG_RUNTIME_DIR/onidot이고 없으면 최종 state/runtime이다.
+// ONI_*_DIR가 마지막에 덮어쓴다. 잘못된 경로면 던진다.
+export function oniDirs(env = process.env, home = homedir(), platform = process.platform) {
+  const e = (k) => (typeof env[k] === 'string' ? env[k] : '');
+  let realHome = home;
+  try { realHome = realpathSync(home); } catch {}
+  let p;
+  if (platform === 'darwin') {
+    const base = join(realHome, 'Library', 'Application Support', 'onidot');
+    p = { config: join(base, 'config'), data: join(base, 'data'), state: join(base, 'state'), runtime: join(base, 'runtime') };
+  } else {
+    const xdg = (key, fallback) => join(e(key) || fallback, 'onidot');
+    p = { config: xdg('XDG_CONFIG_HOME', join(realHome, '.config')), data: xdg('XDG_DATA_HOME', join(realHome, '.local', 'share')),
+      state: xdg('XDG_STATE_HOME', join(realHome, '.local', 'state')) };
+    p.runtime = e('XDG_RUNTIME_DIR') ? join(e('XDG_RUNTIME_DIR'), 'onidot') : '';
+  }
+  for (const [key, name] of [['config', 'ONI_CONFIG_DIR'], ['data', 'ONI_DATA_DIR'], ['state', 'ONI_STATE_DIR'], ['runtime', 'ONI_RUNTIME_DIR']])
+    if (e(name)) p[key] = e(name);
+  if (!p.runtime) p.runtime = join(p.state, 'runtime');
+  for (const key of Object.keys(p)) {
+    if (!isAbsolute(p[key]) || normalize(p[key]) === '/') throw new Error('사용자 디렉터리는 루트가 아닌 절대경로여야 합니다');
+    p[key] = normalize(p[key]).replace(/(.)\/$/, '$1');
+  }
+  return p;
+}
+
+const SEND_TIMEOUT_MS = 300;
+const readTrim = (path) => { try { return readFileSync(path, 'utf8').trim(); } catch { return null; } };
+function runtimeEndpoint(dirs) {
+  let info = null;
+  try { info = JSON.parse(readFileSync(join(dirs.runtime, 'oni-runtime.json'), 'utf8')); } catch {}
+  const port = info?.port;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: 'RUNTIME_NOT_RUNNING' };
+  // 런타임이 SIGKILL로 죽어 실행 정보만 남았을 때 다른 사용자가 그 포트를 잡고 있을 수 있다.
+  // pid가 살아 있고 내 소유일 때만 토큰을 보낸다(죽었으면 ESRCH, 다른 사용자면 EPERM).
+  const pid = info?.pid;
+  if (!Number.isInteger(pid) || pid < 1) return { error: 'RUNTIME_NOT_RUNNING' };
+  try { process.kill(pid, 0); } catch { return { error: 'RUNTIME_NOT_RUNNING' }; }
+  const token = readTrim(join(dirs.config, 'runtime-token'));
+  return token ? { port, token } : { error: 'RUNTIME_TOKEN_MISSING' };
+}
+// 루프백 한 번 호출. 실패·시간 초과는 null, 아니면 {status, body}.
+// node:http는 불러오는 데만 25ms가 들어(훅 하나가 50ms 안팎이어야 한다) HTTP/1.1을 직접 쓴다.
+function parseResponse(buf) {
+  const sep = buf.indexOf('\r\n\r\n');
+  if (sep < 0) return null;
+  const head = buf.subarray(0, sep).toString('latin1');
+  const status = Number(head.match(/^HTTP\/1\.[01] (\d{3})/)?.[1]);
+  if (!status) return null;
+  let rest = buf.subarray(sep + 4);
+  if (/^transfer-encoding:\s*chunked/im.test(head)) {
+    const parts = [];
+    for (;;) {
+      const eol = rest.indexOf('\r\n');
+      if (eol < 0) break;
+      const size = parseInt(rest.subarray(0, eol).toString('latin1'), 16);
+      if (!(size > 0)) break;
+      parts.push(rest.subarray(eol + 2, eol + 2 + size));
+      rest = rest.subarray(eol + 2 + size + 2);
+    }
+    rest = Buffer.concat(parts);
+  }
+  return { status, body: rest.toString('utf8') };
+}
+const callRuntime = (ep, { method, path, body, timeoutMs }) => new Promise((resolve) => {
+  let done = false;
+  const chunks = [];
+  const finish = (v) => { if (!done) { done = true; clearTimeout(timer); socket.destroy(); resolve(v); } };
+  const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
+  const socket = connect({ host: '127.0.0.1', port: ep.port });
+  const timer = setTimeout(() => finish(null), timeoutMs);
+  socket.on('connect', () => {
+    socket.write([`${method} ${path} HTTP/1.1`, `Host: 127.0.0.1:${ep.port}`, `Authorization: Bearer ${ep.token}`, 'Connection: close',
+      ...(payload ? ['Content-Type: application/json', `Content-Length: ${payload.length}`] : []), '', ''].join('\r\n'));
+    if (payload) socket.write(payload);
+  });
+  socket.on('data', (d) => chunks.push(d));
+  socket.on('end', () => finish(parseResponse(Buffer.concat(chunks))));
+  socket.on('close', () => finish(parseResponse(Buffer.concat(chunks))));
+  socket.on('error', () => finish(null));
+});
+// 이벤트 하나당 파일 하나. 임시 파일에 쓴 뒤 rename해 런타임이 반쯤 쓴 파일을 읽지 않게 한다.
+function writeInbox(dirs, event) {
+  try {
+    const dir = join(dirs.data, 'runtime', 'inbox');
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const name = `${Date.now()}-${process.pid}-${randomBytes(4).toString('hex')}`;
+    const tmp = join(dir, `.${name}.tmp`);
+    writeFileSync(tmp, JSON.stringify(event) + '\n', { mode: 0o600, flag: 'wx' });
+    renameSync(tmp, join(dir, `${name}.json`));
+    return true;
+  } catch { return false; }
+}
+// 런타임에 보내고, 안 되면 inbox에 쓴다. 'runtime' | 'inbox' | 'lost'.
+// detail을 주면 런타임이 200으로 받고도 본문에서 거부했다고 알린 건수를 detail.rejected에 적는다.
+async function sendEvent(event, dirs, detail) {
+  try {
+    dirs ??= oniDirs();
+    const ep = runtimeEndpoint(dirs);
+    if (!ep.error) {
+      const r = await callRuntime(ep, { method: 'POST', path: '/v1/hook-events', body: { events: [event] }, timeoutMs: SEND_TIMEOUT_MS });
+      if (r?.status === 200) {
+        if (detail) {
+          try {
+            const rej = JSON.parse(r.body)?.rejected;
+            const n = Array.isArray(rej) ? rej.length : rej;
+            if (Number.isInteger(n) && n > 0) detail.rejected = n;
+          } catch {}
+        }
+        return 'runtime';
+      }
+    }
+  } catch {}
+  try { dirs ??= oniDirs(); } catch { return 'lost'; }
+  return writeInbox(dirs, event) ? 'inbox' : 'lost';
+}
+
+// 봉투. eventId는 보내는 쪽이 정하는 고정 값이다(같은 사건을 다시 보내면 같은 값). 해시는 16진수라 금지 문자열이 생길 수 없다.
+const eventIdFor = (...parts) => `cc-hook:${createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 32)}`;
+const KEY = {
+  // SUBAGENT_*는 이제 oni 훅이 보내지만, 같은 사건이 한 번만 적용되도록 oni와 같은 규칙(cc-hook: + SHA-256("<kind>\n<세션>\n<agentId>") 앞 32자)을 유지한다.
+  SUBAGENT_STARTED: (e) => [e.agentId], SUBAGENT_FINISHED: (e) => [e.agentId], AGENT_LINKED: (e) => [e.agentId, e.stageId],
+  STAGE_STARTED: (e) => [e.stageId, e.data?.runId], STAGE_FINISHED: (e) => [e.stageId, e.data?.runId, e.data?.result],
+  FLOW_BOUND: (e) => [e.data?.workId, e.data?.sessionId, e.flowStartedAt], FLOW_UNBOUND: (e) => [e.data?.workId, e.data?.sessionId, e.flowStartedAt],
+};
+export function envelope(kind, sid, fields = {}) {
+  const { flowStartedAt, ...rest } = fields;
+  const body = Object.fromEntries(Object.entries({ host: 'claude-code', hostSession: sid, kind, occurredAt: new Date().toISOString(), ...rest }).filter(([, v]) => v !== undefined));
+  return { schemaVersion: 1, eventId: eventIdFor(kind, sid, ...KEY[kind]({ ...body, flowStartedAt })), ...body };
+}
 
 class UsageError extends Error {}
 class StateError extends Error {}
@@ -154,7 +292,7 @@ const hooks = {
     // 서브에이전트 세션에는 알리지 않는다. 작업 기록 쓰기는 메인만 한다.
     if (typeof ctx.input.agent_id === 'string' && ctx.input.agent_id) return;
     const prefix = `node ${shellQuote(SCRIPT)} <명령> --data ${shellQuote(ctx.data)} --claude-session ${shellQuote(ctx.sid)}`;
-    const context = `onidot crew 흐름 명령 접두사(work-record 스킬 3절 8번의 <flow>): ${prefix}\n<명령>은 start|pending|ack|unstage|status|stop|ids 중 하나입니다.`;
+    const context = `onidot crew 흐름 명령 접두사(work-record 스킬 3절 8번의 <flow>): ${prefix}\n<명령>은 start|pending|ack|unstage|status|stop|readiness|stage 중 하나입니다.`;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } }));
   },
   'subagent-start'(ctx) {
@@ -207,17 +345,43 @@ const hooks = {
   },
 };
 
-function runHook(name) {
+// 런타임 모드 훅. 대기열에 적지 않고 알림도 내지 않는다(SessionStart의 명령 접두사 안내만 유지).
+// 세션·턴·서브에이전트 관측은 oni 내장 훅이 보내므로 여기서는 흐름 연결(AGENT_LINKED)만 보낸다.
+const runtimeHooks = {
+  async 'session-start'(ctx) { hooks['session-start'](ctx); },
+  async 'subagent-start'() {},
+  async 'subagent-stop'() {},
+  async 'post-agent'(ctx) {
+    const { input } = ctx;
+    if (input.tool_name !== 'Agent' && !(input.tool_name === 'Task' && typeof input.tool_input?.subagent_type === 'string')) return;
+    const agentId = input.tool_response && typeof input.tool_response === 'object' ? input.tool_response.agentId : undefined;
+    const description = input.tool_input?.description;
+    const tag = typeof description === 'string' ? description.match(STAGE_TAG) : null;
+    if (tag && isTsid(tag[1]) && validAgentId(agentId)) await sendEvent(envelope('AGENT_LINKED', ctx.sid, { agentId, stageId: tag[1] }));
+  },
+};
+
+async function runHook(name) {
   // 훅은 어떤 경우에도 Claude Code 작업을 막지 않는다. 오류는 조용히 버리고 종료 코드 0으로 끝낸다.
   const done = () => process.exit(0);
   const handler = Object.hasOwn(hooks, name ?? '') ? hooks[name] : null;
   if (!handler) { process.stdin.resume(); process.stdin.on('end', done).on('error', done); return; }
+  // 3초 안에 못 끝나는 일은 버린다(Claude Code의 훅 timeout보다 먼저 스스로 끝낸다).
+  setTimeout(done, 3000).unref();
   let raw = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (d) => { raw += d; if (raw.length > 1_000_000) done(); });
   process.stdin.on('error', done);
-  process.stdin.on('end', () => {
-    try { const ctx = hookContext(raw, name); if (ctx) handler(ctx); } catch {}
+  process.stdin.on('end', async () => {
+    try {
+      const ctx = hookContext(raw, name);
+      if (ctx) {
+        let marker = null;
+        try { marker = activeMarker(ctx.p); } catch {}
+        if (marker?.mode === 'runtime') await runtimeHooks[name](ctx);
+        else handler(ctx);
+      }
+    } catch {}
     done();
   });
 }
@@ -255,22 +419,73 @@ function cleanup(dir, sid) {
 }
 
 const commands = {
-  start(values, ctx) {
+  async start(values, ctx) {
     const workId = ledgerId(values.work, '--work'), sessionId = ledgerId(values.session, '--session');
+    const mode = values.mode ?? 'queue';
+    if (mode !== 'queue' && mode !== 'runtime') throw new UsageError('--mode는 queue 또는 runtime이어야 합니다.');
+    // --space는 옛 호출 호환으로 받기만 한다. 런타임 원장에는 Space가 없다.
     cleanup(ctx.p.dir, ctx.sid);
-    withLock(ctx.p, () => {
+    const startedAt = withLock(ctx.p, () => {
       const marker = activeMarker(ctx.p);
       const left = events(readRecords(ctx.p)).length;
       const same = marker && marker.workId === workId && marker.sessionId === sessionId;
       if (!same && left)
         throw new StateError(`보내지 않은 흐름 이벤트 ${left}건이 있습니다(작업 ${marker?.workId ?? '알 수 없음'}). 먼저 보내고 ack하거나 stop --discard로 버리세요.`);
+      if (mode === 'runtime' && left)
+        throw new StateError(`대기열에 보내지 않은 흐름 이벤트 ${left}건이 있어 runtime 모드로 바꿀 수 없습니다. 먼저 보내고 ack하거나 stop --discard로 버리세요.`);
       if (!same) rmSync(ctx.p.queue, { force: true });
+      const startedAt = same && typeof marker.startedAt === 'string' ? marker.startedAt : new Date().toISOString();
       // 임시 파일에 쓴 뒤 rename해 읽는 쪽이 반쯤 쓴 활성 표시를 보지 않게 한다.
       const tmp = `${ctx.p.active}.${process.pid}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ workId, sessionId, startedAt: new Date().toISOString() }) + '\n', { mode: 0o600 });
+      writeFileSync(tmp, JSON.stringify({ workId, sessionId, startedAt, mode,
+        ...(same && marker.stages && typeof marker.stages === 'object' ? { stages: marker.stages } : {}) }) + '\n', { mode: 0o600 });
       renameSync(tmp, ctx.p.active);
+      return startedAt;
     });
-    out({ active: true, claudeSession: ctx.sid, workId, sessionId });
+    const detail = {};
+    const bound = mode === 'runtime'
+      ? await sendEvent(envelope('FLOW_BOUND', ctx.sid, { data: { workId, sessionId }, flowStartedAt: startedAt }), undefined, detail) : undefined;
+    // 런타임 모드를 켰는데 런타임이 관측 훅 등록을 알리지 않으면(readiness가 queue) 서브에이전트 관측이 비므로 경고한다.
+    let warning;
+    if (mode === 'runtime') {
+      const rd = await readinessBody();
+      if (rd?.runtime === true && rd.mode === 'queue') warning = '런타임이 관측 훅 등록(claude-code)을 알리지 않아 readiness가 대기열(queue) 모드입니다. oni register로 관측 훅을 등록하거나 --mode queue로 켜세요.';
+    }
+    out({ active: true, claudeSession: ctx.sid, workId, sessionId, mode, ...(bound ? { bound } : {}), ...(detail.rejected ? { rejected: detail.rejected } : {}), ...(warning ? { warning } : {}) });
+  },
+  // 런타임 모드의 단계 시작·끝. 증거·판정·완료는 MCP로 남기고, 단계 흐름만 런타임이 보낸다.
+  async stage(values, ctx, positionals) {
+    const sub = positionals[0];
+    if (sub !== 'start' && sub !== 'finish') throw new UsageError('stage start|finish 중 하나를 주세요.');
+    const stageId = values.stage;
+    if (!isTsid(stageId)) throw new UsageError('--stage에 단계 ID(13자 TSID)를 주세요.');
+    if (!serverText(values.summary, 1000)) throw new UsageError('--summary에 한 줄 요약(1000바이트 이하, 줄바꿈·비밀값 모양 문자열 없음)을 주세요.');
+    let data;
+    if (sub === 'start') {
+      // 메인이 직접 하는 단계는 --role을 생략한다. 값이 있을 때만 검사한다.
+      if (values.role !== undefined && !validRole(values.role)) throw new UsageError('--role은 맡긴 역할 이름(예: onidot-crew:worker)이어야 합니다. 메인이 직접 하는 단계는 생략하세요.');
+      data = { ...(values.role !== undefined ? { role: values.role } : {}), summary: values.summary };
+    } else {
+      if (!['DONE', 'FAILED', 'BLOCKED'].includes(values.result)) throw new UsageError('--result는 DONE, FAILED, BLOCKED 중 하나여야 합니다.');
+      data = { result: values.result, summary: values.summary };
+    }
+    // 실행 번호(runId): 끝나지 않은 단계의 start 재호출은 같은 번호(재시도), 끝난 뒤의 start는 새 번호다. 활성 표시에 단계별로 저장한다.
+    const runId = withLock(ctx.p, () => {
+      const marker = activeMarker(ctx.p);
+      if (marker?.mode !== 'runtime') throw new StateError('runtime 모드로 켠 작업 흐름이 없습니다. stage 명령은 start --mode runtime 뒤에만 씁니다.');
+      const stages = marker.stages && typeof marker.stages === 'object' ? marker.stages : {};
+      const entry = stages[stageId] ?? { run: 0, open: false };
+      const run = sub === 'start' ? (entry.open ? entry.run : entry.run + 1) : Math.max(entry.run, 1);
+      stages[stageId] = { run, open: sub === 'start' };
+      const tmp = `${ctx.p.active}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify({ ...marker, stages }) + '\n', { mode: 0o600 });
+      renameSync(tmp, ctx.p.active);
+      return run;
+    });
+    data.runId = runId;
+    const detail = {};
+    const sent = await sendEvent(envelope(sub === 'start' ? 'STAGE_STARTED' : 'STAGE_FINISHED', ctx.sid, { stageId, data }), undefined, detail);
+    out({ sent, stageId, ...(detail.rejected ? { rejected: detail.rejected } : {}) });
   },
   pending(values, ctx) {
     const raw = values['next-seq'];
@@ -351,36 +566,63 @@ const commands = {
     const left = events(readRecords(ctx.p)).length;
     out(marker ? { active: true, workId: marker.workId, sessionId: marker.sessionId, pending: left } : { active: false, pending: left });
   },
-  stop(values, ctx) {
-    withLock(ctx.p, () => {
+  async stop(values, ctx) {
+    const marker = withLock(ctx.p, () => {
       const left = events(readRecords(ctx.p)).length;
       if (left && !values.discard) throw new StateError(`보내지 않은 흐름 이벤트 ${left}건이 있습니다. 먼저 보내고 ack하거나 stop --discard로 버리세요.`);
+      const marker = activeMarker(ctx.p);
       rmSync(ctx.p.active, { force: true });
       rmSync(ctx.p.queue, { force: true });
+      return marker;
     });
+    if (marker?.mode === 'runtime')
+      await sendEvent(envelope('FLOW_UNBOUND', ctx.sid, { data: { workId: marker.workId, sessionId: marker.sessionId }, flowStartedAt: marker.startedAt }));
     out({ active: false });
   },
 };
 
 // 종료 코드: 0 성공, 1 잠금 실패·예상 못 한 오류, 2 잘못된 인자, 3 상태 오류(꺼져 있음·보내지 않은 항목 있음).
-function runCommand(argv) {
+// 런타임 준비 상태. 런타임 응답을 그대로 내고 runtime: true|false와 mode: 'runtime'|'queue'를 더한다.
+// mode는 준비됐고(ready) 응답의 observationHooks(oni 관측 훅이 등록된 호스트 목록)에 claude-code가 있을 때만 'runtime'이다.
+// 필드가 없거나(옛 oni) 호스트가 없으면 'queue'라서 서브에이전트 관측이 사라지지 않는다.
+const HOST = 'claude-code';
+export const readinessMode = (body) => body?.ready === true && Array.isArray(body.observationHooks) && body.observationHooks.includes(HOST) ? 'runtime' : 'queue';
+// readiness 결과 객체. 런타임이 없거나 응답이 이상해도 항상 객체를 낸다.
+async function readinessBody() {
+  let dirs;
+  try { dirs = oniDirs(); } catch { return { runtime: false, mode: 'queue', ready: false, reason: 'PATHS_INVALID' }; }
+  const ep = runtimeEndpoint(dirs);
+  if (ep.error) return { runtime: false, mode: 'queue', ready: false, reason: ep.error };
+  const r = await callRuntime(ep, { method: 'GET', path: '/v1/readiness', timeoutMs: 1500 });
+  if (!r) return { runtime: false, mode: 'queue', ready: false, reason: 'RUNTIME_NOT_RUNNING' };
+  if (r.status !== 200) return { runtime: true, mode: 'queue', ready: false, reason: `HTTP_${r.status}` };
+  let body = null;
+  try { body = JSON.parse(r.body); } catch {}
+  return body && typeof body === 'object' && !Array.isArray(body) ? { ...body, runtime: true, mode: readinessMode(body) } : { runtime: true, mode: 'queue', ready: false, reason: 'INVALID_RESPONSE' };
+}
+async function readiness() { out(await readinessBody()); }
+
+async function runCommand(argv) {
   try {
     const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: {
       data: { type: 'string' }, 'claude-session': { type: 'string' }, work: { type: 'string' }, session: { type: 'string' },
-      'next-seq': { type: 'string' }, stage: { type: 'string' }, discard: { type: 'boolean' }, count: { type: 'string' } } });
+      'next-seq': { type: 'string' }, stage: { type: 'string' }, discard: { type: 'boolean' }, count: { type: 'string' },
+      space: { type: 'string' }, mode: { type: 'string' }, role: { type: 'string' }, summary: { type: 'string' }, result: { type: 'string' } } });
     const [name, ...rest] = positionals;
-    // ids는 대기열과 무관하게 작업 기록 단계 ID만 발급하므로 세션·데이터 경로가 없어도 된다.
+    // ids(옛 단계 ID 발급)는 호환용으로만 남긴다. 단계 선행은 onidot-work의 ref로 걸므로 스킬은 이 명령을 안내하지 않는다.
+    // 대기열과 무관하게 ID만 발급하므로 세션·데이터 경로가 없어도 된다.
     if (name === 'ids') {
       const raw = values.count ?? '1';
       if (!/^\d{1,3}$/.test(raw) || Number(raw) < 1 || Number(raw) > 200) throw new UsageError('--count에 1~200 사이 개수를 주세요.');
       out({ ids: newTsids(Number(raw)) });
       return;
     }
-    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | ids | hook <session-start|subagent-start|subagent-stop|post-agent>');
+    if (name === 'readiness') { await readiness(values); return; }
+    if (!Object.hasOwn(commands, name ?? '')) throw new UsageError('명령: start | pending | ack | unstage | status | stop | readiness | stage <start|finish> | hook <session-start|subagent-start|subagent-stop|post-agent>');
     const ctx = commandContext(values);
     // 이 세션의 잠금 파일을 만들 디렉터리. status는 읽기만 하므로 만들지 않는다.
     if (name !== 'status') mkdirSync(ctx.p.dir, { recursive: true, mode: 0o700 });
-    commands[name](values, ctx, rest);
+    await commands[name](values, ctx, rest);
   } catch (e) {
     process.stderr.write(`flow-queue: ${e.message}\n`);
     process.exitCode = e instanceof UsageError || e?.code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION' || e?.code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' ? 2
@@ -392,5 +634,5 @@ function runCommand(argv) {
 const direct = (() => { try { return realpathSync(process.argv[1] ?? '') === realpathSync(SCRIPT); } catch { return false; } })();
 if (direct) {
   if (process.argv[2] === 'hook') runHook(process.argv[3]);
-  else runCommand(process.argv.slice(2));
+  else await runCommand(process.argv.slice(2));
 }

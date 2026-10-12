@@ -2,11 +2,11 @@
 
 onidot-studio AI 플러그인 `onidot@onidot`의 원본·생성기·설치 카탈로그·패키징을 소유한다. 서버는 onidot-studio, 공통 인증은 onidot-platform이 소유한다. 작업 기준과 결과는 [W1-22P](https://labs.onidot.com/w/0rsx2c7fbz8qm/pages/0rtx2argyggsq)에 있다.
 
-두 번째 제품 `onidot-crew@onidot`(표시 이름 onidot crew)는 계획·위임·검증·재개를 돕는 역할 서브에이전트와 업무 스킬, Codex SessionStart 안내 훅, Claude Code 작업 흐름 훅을 제공한다. 흐름 훅(`SubagentStart`·`SubagentStop`·`Agent` 뒤 `PostToolUse`)은 [flow-queue.mjs](source/crew/runtime/flow-queue.mjs)로 서브에이전트 시작·끝을 `${CLAUDE_PLUGIN_DATA}/flow/`의 Claude 세션별 대기열에 적고 메인에 알린다. Studio로 보내는 일은 메인이 `work-record` 스킬대로 MCP로 하며, 그 스킬로 대기열을 켠 대화에서만 기록·알림이 생긴다. MCP 연결과 서버 반입이 없으며 Claude Code 서브에이전트(`agents/`)와 Codex 에이전트(`codex/agents/crew-*.toml`)를 함께 생성한다.
+두 번째 제품 `onidot-crew@onidot`(표시 이름 onidot crew)는 계획·위임·검증·재개를 돕는 역할 서브에이전트와 업무 스킬, Codex SessionStart 안내 훅, Claude Code 작업 흐름 훅을 제공한다. 흐름 훅(`SubagentStart`·`SubagentStop`·`Agent` 뒤 `PostToolUse`)은 [flow-queue.mjs](source/crew/runtime/flow-queue.mjs)로 서브에이전트 시작·끝을 `${CLAUDE_PLUGIN_DATA}/flow/`의 Claude 세션별 대기열에 적고 메인에 알린다. 작업 기록은 이 PC의 oni 런타임이 서비스하는 MCP 서버 `onidot-work`에 메인이 `work-record` 스킬대로 한다. oni 관측 훅이 등록된 런타임 모드에서는 crew 훅이 흐름 이벤트만 런타임으로 보내고, 그렇지 않으면 그 스킬로 대기열을 켠 대화에서만 기록·알림이 생긴다. `onidot-work` 도구가 없으면 작업 기록이 없는 것으로 보고 `resume` 스킬의 진행 기록으로 대신한다. MCP 연결과 서버 반입이 없으며 Claude Code 서브에이전트(`agents/`)와 Codex 에이전트(`codex/agents/crew-*.toml`)를 함께 생성한다.
 
 ## 설치와 연결
 
-현재 패키지 버전은 **0.15.8**이다. 플러그인은 인스턴스 주소를 고정하지 않는다. MCP 연결은 클라이언트 설정에 `onidot-<별칭>`으로 등록한다. 집 셀프호스팅 `onidot-dev`·회사 로컬 `onidot-work`는 예시이며 URL은 사용자가 선택한다.
+현재 패키지 버전은 **0.15.9**이다. 플러그인은 인스턴스 주소를 고정하지 않는다. MCP 연결은 클라이언트 설정에 `onidot-<별칭>`으로 등록한다. `onidot-dev`는 예시이며 URL은 사용자가 선택한다. 별칭 `work`는 oni 런타임의 작업 기록 서버 `onidot-work`가 쓰므로 연결 별칭으로 쓰지 않는다.
 
 ```sh
 codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git

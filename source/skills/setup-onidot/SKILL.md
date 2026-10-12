@@ -5,7 +5,7 @@ description: 선택한 onidot 인스턴스의 MCP 연결, OAuth, Space 승인 �
 
 # onidot 연결
 
-onidot 플러그인은 인스턴스 주소를 고정하지 않는다. 연결마다 사용자가 선택한 앱 주소 `APP_URL`, MCP 주소 `MCP_URL`, 별칭 `ALIAS`를 사용한다. 등록 이름은 `onidot-<ALIAS>`다. 예를 들어 집은 `onidot-home`, 회사 로컬은 `onidot-work`로 구별할 수 있으나 이 이름이나 개인 도메인을 필수값으로 쓰지 않는다.
+onidot 플러그인은 인스턴스 주소를 고정하지 않는다. 연결마다 사용자가 선택한 앱 주소 `APP_URL`, MCP 주소 `MCP_URL`, 별칭 `ALIAS`를 사용한다. 등록 이름은 `onidot-<ALIAS>`다. 별칭 `work`는 이 PC의 oni 런타임이 작업 기록용 MCP 서버 `onidot-work`로 쓰는 이름이라 연결 별칭으로 쓸 수 없다. 작업 기록은 이 연결이 아니라 `onidot-work`에 한다. 특정 이름이나 개인 도메인을 필수값으로 쓰지 않는다.
 
 ## 연결 절차
 
@@ -38,7 +38,7 @@ ALIAS='dev'
 MCP_NAME="onidot-${ALIAS}"
 ```
 
-집 셀프호스팅은 `onidot-dev`, 회사 로컬은 별도의 URL과 `ALIAS='work'`를 입력해 `onidot-work`로 등록하는 예시다. URL 기본값은 없다. 기대 결과는 서로 다른 이름·주소의 연결 두 개다. 이미 같은 주소의 연결이 있으면 중복 등록하지 않는다.
+`ALIAS='dev'`면 `onidot-dev`로 등록하는 예시다. URL 기본값은 없다. 인스턴스가 여럿이면 별칭을 달리해 서로 다른 이름·주소의 연결로 등록한다. 이미 같은 주소의 연결이 있으면 중복 등록하지 않는다. `onidot-work`는 이 방식으로 등록하는 연결이 아니다. 작업 기록용 서버로 `oni register`가 호스트 설정에 등록한다.
 
 비밀값·OAuth 로그인·Space 선택과 READ/WRITE 승인은 **사람이 직접** 수행한다. AI 에이전트는 사용자가 요청한 연결의 공개 URL·별칭·명령만 준비하고, 로그인 화면이나 전체 인가 URL·토큰을 로그에 남기지 않는다.
 
@@ -51,7 +51,7 @@ codex plugin marketplace add https://github.com/onidot-labs/onidot-plugins.git
 codex plugin add onidot@onidot
 ```
 
-기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.8`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
+기대 결과는 설치 이름 `onidot@onidot`, 버전 `0.15.9`이다. 기존 git marketplace는 `codex plugin marketplace upgrade onidot`로 갱신한 뒤 설치한다. `codex plugin marketplace list --json`으로 경로를 확인한다. 경로가 사라졌다면 해당 항목만 `codex plugin marketplace remove onidot` 후 다시 등록한다.
 
 인스턴스는 플러그인과 별도로 등록한다.
 
@@ -66,10 +66,7 @@ codex mcp login "$MCP_NAME"
 
 ```toml
 [mcp_servers.onidot-dev]
-url = "<집 인스턴스 MCP_URL>"
-
-[mcp_servers.onidot-work]
-url = "<회사 로컬 MCP_URL>"
+url = "<MCP_URL>"
 ```
 
 기대 결과는 `codex mcp list`와 새 세션의 `/mcp`에 선택한 별칭이 표시되는 것이다. 로그인 성공 뒤에도 아래 실제 도구 검증을 수행한다.
@@ -124,7 +121,7 @@ claude mcp get "$MCP_NAME"
 
 ### claude.ai 사용자 지정 커넥터
 
-1. 셀프호스팅 도메인의 정확한 `MCP_URL`이 Claude의 원격 네트워크에서 접근 가능한지 운영자가 확인한다. 클라우드 커넥터는 회사 PC의 localhost에 연결할 수 없다. 회사 로컬은 위 로컬 클라이언트 연결을 사용하며 이 태스크는 서버를 외부에 공개하지 않는다.
+1. 셀프호스팅 도메인의 정확한 `MCP_URL`이 Claude의 원격 네트워크에서 접근 가능한지 운영자가 확인한다. 클라우드 커넥터는 사용자 PC의 localhost에 연결할 수 없다. localhost 인스턴스는 위 로컬 클라이언트 연결을 사용하며 이 태스크는 서버를 외부에 공개하지 않는다.
 2. claude.ai의 Customize → Connectors → Add custom connector에서 이름 `onidot-<ALIAS>`와 `MCP_URL`을 입력한다. 조직 계정은 해당 관리자의 추가 권한이 필요하다.
 3. **사람이 직접** OAuth 로그인·Space·연결 모드를 승인한다. 기대 결과는 선택한 별칭의 커넥터가 연결된 상태다. 웹에서 만든 계정 연결을 지원하는 Desktop·모바일에서도 사용한다.
 4. Claude Code가 claude.ai 구독 인증을 사용하면 `/mcp`에서 계정 커넥터를 확인한다. API 키·외부 제공자 인증으로 해당 커넥터를 불러온다고 가정하지 않는다. 같은 URL의 독립 MCP와 중복 등록하지 않는다.

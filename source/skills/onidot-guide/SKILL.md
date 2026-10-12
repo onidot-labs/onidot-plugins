@@ -5,7 +5,7 @@ description: onidot이 연결돼 있을 때, 사용자의 프로젝트·도메�
 
 # onidot 지침 따르기
 
-onidot은 사용자의 지식·결정·작업 기록 저장소다. 판단과 실행은 당신이 하고, onidot은 지침과 근거를 준다.
+onidot은 사용자의 지식·결정 저장소다. 판단과 실행은 당신이 하고, onidot은 지침과 근거를 준다.
 
 1. `get_onidot_guide`를 한 번 호출해 onidot 기본 지침(`defaultGuide`)과 접근 가능한 Space 목록을 읽는다. Space를 정하기 전에 읽을 수 있다.
 2. 기본 지침의 "작업할 Space"에 따라 이번 일의 Space를 정하고, `get_assistant_context(spaceId)`로 그 Space의 활성 지침(`instructions`)을 읽는다.
@@ -14,7 +14,8 @@ onidot은 사용자의 지식·결정·작업 기록 저장소다. 판단과 실
 5. 기본 지침의 작업할 Space·찾기·판단·배우기·이어가기·플레이북을 일에 적용한다. 문서 편집 절차는 `use-onidot`을 따른다.
 6. 적용 중인 지침을 물으면 로컬 지침과 함께 onidot 기본 지침·Space 지침도 답한다.
 7. 같은 세션에서 이미 읽었으면 다시 읽지 않는다. Space를 바꾸면 그 Space의 지침만 다시 읽는다.
-8. 이 onidot 플러그인 버전은 {{version}}입니다. `get_onidot_guide` 응답의 `updates`에 더 높은 `plugin.latest`나 새 서버 버전이 있으면 기본 지침의 업데이트 알림을 따른다.
+8. 작업 기록(큰 일의 계획·진행·증거·인계)은 oni 런타임(`onidot-work`)에 한다. 이 연결의 도구로 남기지 않는다.
+9. 이 onidot 플러그인 버전은 {{version}}입니다. `get_onidot_guide` 응답의 `updates`에 더 높은 `plugin.latest`나 새 서버 버전이 있으면 기본 지침의 업데이트 알림을 따른다.
 
 ## 도구 목록 자동 점검
 
