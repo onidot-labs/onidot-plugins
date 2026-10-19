@@ -1,26 +1,14 @@
 {
-  "name": "onidot",
+  "name": "onidot-studio",
   "interface": {
-    "displayName": "onidot"
+    "displayName": "Onidot Studio"
   },
   "plugins": [
     {
-      "name": "onidot",
+      "name": "onidot-studio",
       "source": {
         "source": "local",
-        "path": "./plugins/onidot"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_USE"
-      },
-      "category": "Productivity"
-    },
-    {
-      "name": "onidot-crew",
-      "source": {
-        "source": "local",
-        "path": "./plugins/onidot-crew"
+        "path": "./plugins/onidot-studio"
       },
       "policy": {
         "installation": "AVAILABLE",
