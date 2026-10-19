@@ -4,15 +4,9 @@
   "products": [
     {
       "id": "wiki",
-      "name": "onidot",
-      "displayName": "onidot",
-      "version": "0.15.9"
-    },
-    {
-      "id": "crew",
-      "name": "onidot-crew",
-      "displayName": "onidot crew",
-      "version": "0.7.0"
+      "name": "onidot-studio",
+      "displayName": "Onidot Studio",
+      "version": "0.18.1"
     }
   ]
 }

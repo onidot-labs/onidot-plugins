@@ -1,13 +1,12 @@
 {
-  "name": "onidot",
-  "version": "0.15.9",
-  "displayName": "onidot",
+  "name": "onidot-studio",
+  "version": "0.18.1",
+  "displayName": "Onidot Studio",
   "description": "onidot-studio 문서를 검색하고 페이지 작성·저장·공유 작업을 현재 사용자 권한으로 수행합니다.",
   "guide": "https://onidot.com",
   "skills": [
     "setup-onidot",
-    "use-onidot",
-    "onidot-guide"
+    "use-onidot"
   ],
   "shortDescription": "onidot-studio 문서 검색·작성·저장",
   "defaultPrompt": [

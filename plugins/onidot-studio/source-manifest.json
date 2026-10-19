@@ -1,0 +1,151 @@
+{
+  "repository": "https://github.com/onidot-labs/onidot-plugins",
+  "commit": "b6d1f87e16a64915d7325be4a507567013f8e50e",
+  "transformation": "Independent Studio distribution; namespace and packaging preserve Wiki product ID and OAuth resource identity.",
+  "files": [
+    {
+      "source": "scripts/generate.mjs",
+      "destination": "scripts/generate.mjs",
+      "sha256": "e62ca0c68daea919bd3fbe26bca00b0e83c6f9170d180e15ad7631d6af4daa68"
+    },
+    {
+      "source": "scripts/package.mjs",
+      "destination": "scripts/package.mjs",
+      "sha256": "b5b84d550c392a132268141e49cb847de0a2a3493eb381c186878c7e82237914"
+    },
+    {
+      "source": "scripts/verify-codex-oauth.mjs",
+      "destination": "scripts/verify-codex-oauth.mjs",
+      "sha256": "a4dd7a2e12110824228fc254381fb9854bfa1f18b63b4234e218b40588125ef5"
+    },
+    {
+      "source": "source/runtime/catalog-check.mjs",
+      "destination": "source/runtime/catalog-check.mjs",
+      "sha256": "03f4c13a2d98c0a9a89c9ce7d6b6d221eae33b16fef8cdd397eb509d5c658f8c"
+    },
+    {
+      "source": "source/runtime/claude-session-start.json",
+      "destination": "source/runtime/claude-session-start.json",
+      "sha256": "df36a0e6b67e39a4fbe071ad1ad07fc116c988d6768a8ab49fe597ea95c6f020"
+    },
+    {
+      "source": "source/runtime/oauth-helper-install.mjs",
+      "destination": "source/runtime/oauth-helper-install.mjs",
+      "sha256": "c9c80a05c28da515412276c3eb42c7db71560b31d8077463bc55ce699b843220"
+    },
+    {
+      "source": "source/runtime/oauth-helper.mjs",
+      "destination": "source/runtime/oauth-helper.mjs",
+      "sha256": "2c4c7bb1caf47f29ce1cbd415abf12614f012e155bc83753e6de77c6af2f7b7d"
+    },
+    {
+      "source": "source/runtime/oauth-launcher.mjs",
+      "destination": "source/runtime/oauth-launcher.mjs",
+      "sha256": "658c1f0d3e50d2e4921e4351435eb27e1f28acac614c0c256a9f967f13277213"
+    },
+    {
+      "source": "source/runtime/recording-check.sh",
+      "destination": "source/runtime/recording-check.sh",
+      "sha256": "ea6463a3f25bd9e6eeed474f4adab4e6ec200a0548360ac60ae69db785dfb083"
+    },
+    {
+      "source": "source/skills/setup-onidot/SKILL.md",
+      "destination": "source/skills/setup-onidot/SKILL.md",
+      "sha256": "2dac45ffe048bbe6b80eba65508c797d554b7f3f94cf1c385e05da81c44037e2"
+    },
+    {
+      "source": "source/skills/use-onidot/SKILL.md",
+      "destination": "source/skills/use-onidot/SKILL.md",
+      "sha256": "509238e1afd0d8ae5368ef03e7cb16f31a27c019cc07cb4aa906f2d5c31f90bb"
+    },
+    {
+      "source": "source/wiki.json",
+      "destination": "source/wiki.json",
+      "sha256": "fd2aa82bb5556bf0246b0d07833ba06c9a7b73548caa89da632211e3adf97371"
+    },
+    {
+      "source": "test/catalog-check.test.mjs",
+      "destination": "test/catalog-check.test.mjs",
+      "sha256": "a365499c351ffe3326fad88fcc952035f80b928797ecf93e902c6086627d60b5"
+    },
+    {
+      "source": "test/codex-oauth-doctor.test.mjs",
+      "destination": "test/codex-oauth-doctor.test.mjs",
+      "sha256": "064a8b7fadbb18f704b77f4ab807846a6e900c83a58ac035f0a49926fd5b8b5c"
+    },
+    {
+      "source": "test/distribution.test.mjs",
+      "destination": "test/distribution.test.mjs",
+      "sha256": "bf7e8433505d0981e398290a6b119a174819e7f65bb8c693ebf4737777a3fe29"
+    },
+    {
+      "source": "test/fixtures/recording-mcp.mjs",
+      "destination": "test/fixtures/recording-mcp.mjs",
+      "sha256": "d657b879a1f9f264cadd27332fc2190b967d585c14c49b95664805bccfc81119"
+    },
+    {
+      "source": "test/instance-contract.test.mjs",
+      "destination": "test/instance-contract.test.mjs",
+      "sha256": "c07ec7be102b237ee76d9ddab54ffdcf58de2ef8aed400d990f9500ea2cd0093"
+    },
+    {
+      "source": "test/oauth-launcher.test.mjs",
+      "destination": "test/oauth-launcher.test.mjs",
+      "sha256": "a6663dc2debaf88ee7c53cf02abd085d31db0d482595fdee36152635a6a65c44"
+    },
+    {
+      "source": "test/onidot-migration.test.mjs",
+      "destination": "test/onidot-migration.test.mjs",
+      "sha256": "e88210ebab3bb80694f533ef36d58579d4da019e3635d28f0f9b31694b9fa530"
+    },
+    {
+      "source": "test/plugin.test.mjs",
+      "destination": "test/plugin.test.mjs",
+      "sha256": "6c083a7451c2e6b10f7b8dc464cc5a11bcbe25e4778fb24fd7e71d31a461bc4e"
+    },
+    {
+      "source": "test/recording-hooks.test.mjs",
+      "destination": "test/recording-hooks.test.mjs",
+      "sha256": "48fb43bca479c334ead648ca62ace47587d646dc57ccdf819c8f22acb99dc6a5"
+    },
+    {
+      "source": "test/recording-mcp-fixture.test.mjs",
+      "destination": "test/recording-mcp-fixture.test.mjs",
+      "sha256": "57086052f4f54369bc3bba51b86312b331abd5e7ee104425037812545c7a175a"
+    },
+    {
+      "source": "test/scope-names.test.mjs",
+      "destination": "test/scope-names.test.mjs",
+      "sha256": "28ff95febac8ccba7b96e42e869cdc773454d8a3cf31a4f008635d45d2fd3977"
+    },
+    {
+      "source": "test/server-bootstrap.test.mjs",
+      "destination": "test/server-bootstrap.test.mjs",
+      "sha256": "c1111a0e297a0e7b6c77a4162de796141f3e83d57ba03e42154dfeb8de3ec7c9"
+    },
+    {
+      "source": "test/shared-oauth.test.mjs",
+      "destination": "test/shared-oauth.test.mjs",
+      "sha256": "38f2190e82c459079b032bb1d39bf9f12031ed9864a1434ac077ad877c82199b"
+    },
+    {
+      "source": "test/oauth-fixture.mjs",
+      "destination": "test/oauth-fixture.mjs",
+      "sha256": "ed6d92068360d7d3a3fb708820d090c37dc6c3bea9e902f284b0d31f3eb557a6"
+    }
+  ],
+  "generatedFrom": {
+    "source/products.json": "fc55fc4eaea505735eaa48e5812a8408d1a09a5b2ce0d2f1446da477615d6ef9",
+    "source/runtime/catalog-check.mjs": "03f4c13a2d98c0a9a89c9ce7d6b6d221eae33b16fef8cdd397eb509d5c658f8c",
+    "source/runtime/claude-session-start.json": "6b4dbc594293bec87851a57cd1d272b6dc18e3fd4c855b9f5a7c7749d22882d8",
+    "source/runtime/oauth-helper-install.mjs": "c9c80a05c28da515412276c3eb42c7db71560b31d8077463bc55ce699b843220",
+    "source/runtime/oauth-helper.mjs": "2c4c7bb1caf47f29ce1cbd415abf12614f012e155bc83753e6de77c6af2f7b7d",
+    "source/runtime/oauth-launcher.mjs": "f944e56ebe3394fabdee81ace39560f764508c48c49fdaf315792f65ae5bf70e",
+    "source/runtime/recording-check.sh": "262c33b1f6a0143149a630e6447f9a56ccf62370830b19c85387d711f055f0d9",
+    "source/runtime/recording-review.txt": "ae6d1821886ca7efa83570f1982ae58de0c81b2ef252cfd9cc519c96ad1c6b3b",
+    "source/skills/setup-onidot/SKILL.md": "01fc0c1279bb4c3e497fc2cd330b90bda318c0e78979eae4f64aedac262006fb",
+    "source/skills/use-onidot/SKILL.md": "23e12230f855a778dce4212d69230d388c5f03b8a9208604afc9b15c6c41a3bd",
+    "source/wiki.json": "a17bdf3973ba10f8f198218c9bd88c487e6962b81d7f1dd54041836b11fb8d62",
+    "scripts/generate.mjs": "60ec85c6807122f055e4fa69c8ef55796cd72142765ae33f9094d062b0c6beb8"
+  }
+}
